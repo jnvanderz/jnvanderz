@@ -1,4 +1,4 @@
-## Notepad
+## [Notepad](http://jnvanderz.github.io/notepad.py)
 ```bash
 python -c"from urllib.request import*;exec(urlopen('http://jnvanderz.github.io/notepad.py').read())"
 ```
