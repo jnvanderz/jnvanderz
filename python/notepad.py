@@ -61,8 +61,20 @@ except ImportError:
 
 APP = "Notepad"
 VERSION = "4.0"
-SCRIPT_PATH = os.path.abspath(__file__)
-SCRIPT_DIR = os.path.dirname(SCRIPT_PATH)
+
+
+def find_script_path():
+    path = globals().get("__file__")
+    if not path:
+        candidate = sys.argv[0] if sys.argv else ""
+        if candidate and os.path.isfile(candidate) and \
+                candidate.lower().endswith((".py", ".pyw", ".pyz")):
+            path = candidate
+    return os.path.abspath(path) if path else None
+
+
+SCRIPT_PATH = find_script_path()
+SCRIPT_DIR = os.path.dirname(SCRIPT_PATH) if SCRIPT_PATH else os.getcwd()
 PORTABLE_DIR = os.path.join(SCRIPT_DIR, "notepad_data")
 HOME_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".pynotepad")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -3715,8 +3727,8 @@ class Notepad:
         return doc
 
     def _filetypes(self):
-        return [("Text files", "*.txt *.md *.py *.csv *.json *.log *.ini *.xml *.html *.yml"),
-                ("All files", "*.*")]
+        return [("All files", "*.*"),
+                ("Text files", "*.txt *.md *.py *.csv *.json *.log *.ini *.xml *.html *.yml")]
 
     def reload(self, doc=None, encoding=None, ask=True):
         doc = doc or self.current()
@@ -6542,9 +6554,9 @@ class Notepad:
     def open_archive(self, path=None):
         if not path:
             path = filedialog.askopenfilename(title="Open Archive",
-                                              filetypes=[("Zip archives", "*.zip *.jar *.whl "
-                                                          "*.epub *.docx *.xlsx"),
-                                                         ("All files", "*.*")])
+                                              filetypes=[("All files", "*.*"),
+                                                         ("Zip archives", "*.zip *.jar *.whl "
+                                                          "*.epub *.docx *.xlsx")])
             if not path:
                 return
         try:
@@ -6946,7 +6958,10 @@ class Notepad:
         if doc.modified() and not self.save(doc):
             return
         try:
-            subprocess.Popen([sys.executable, SCRIPT_PATH, "--new-window", doc.path])
+            cmd = self.relaunch_command("--new-window", doc.path)
+            if not cmd:
+                return
+            subprocess.Popen(cmd)
         except OSError as e:
             messagebox.showerror("Error", str(e))
             return
@@ -7310,7 +7325,8 @@ class Notepad:
             f"{APP} {VERSION}\n\nA cross-platform text and code editor in a single Python file, "
             f"using only the standard library.\n\nPython {sys.version.split()[0]}\n"
             f"Tk {self.root.tk.call('info', 'patchlevel')}\n{sys.platform}\n\n"
-            f"Settings ({mode} mode):\n{CONFIG_DIR}\n\nScript:\n{SCRIPT_PATH}")
+            f"Settings ({mode} mode):\n{CONFIG_DIR}\n\nScript:\n"
+            f"{SCRIPT_PATH or 'loaded with exec() (no file)'}")
 
     def open_settings_folder(self):
         os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -7360,8 +7376,9 @@ class Notepad:
                 pass
         self._reset_pending = True
         if messagebox.askyesno(APP, "Settings were reset. Restart Notepad now?"):
-            if self.exit():
-                subprocess.Popen([sys.executable, SCRIPT_PATH, "--new-window"])
+            cmd = self.relaunch_command("--new-window")
+            if self.exit() and cmd:
+                subprocess.Popen(cmd)
 
     def toggle_portable(self):
         if os.path.normcase(CONFIG_DIR) == os.path.normcase(PORTABLE_DIR):
@@ -7389,7 +7406,16 @@ class Notepad:
                     return
                 messagebox.showinfo(APP, "Portable mode turned on. Restart Notepad to apply.")
 
+    def relaunch_command(self, *args):
+        if SCRIPT_PATH:
+            return [sys.executable, SCRIPT_PATH] + list(args)
+        messagebox.showinfo(APP, "This option needs Notepad to be started from its .py file. "
+                                 "It is not available when the code is run with exec().")
+        return None
+
     def create_desktop_shortcut(self):
+        if not self.relaunch_command():
+            return
         home = os.path.expanduser("~")
         desktop = next((d for d in (os.path.join(home, "Desktop"),
                                     os.path.join(home, "OneDrive", "Desktop"),
@@ -7437,7 +7463,10 @@ class Notepad:
         messagebox.showinfo(APP, f"Shortcut created:\n{target}")
 
     def run_self_test_process(self):
-        self._start_process([sys.executable, SCRIPT_PATH, "--selftest"], SCRIPT_DIR,
+        cmd = self.relaunch_command("--selftest")
+        if not cmd:
+            return
+        self._start_process(cmd, SCRIPT_DIR,
                             "Self-test")
 
     def doc_for(self, widget):
@@ -9515,7 +9544,7 @@ class Notepad:
             path = filedialog.asksaveasfilename(
                 title="Choose or Create a SQLite Database", confirmoverwrite=False,
                 defaultextension=".db",
-                filetypes=[("SQLite databases", "*.db *.sqlite *.sqlite3"), ("All files", "*.*")])
+                filetypes=[("All files", "*.*"), ("SQLite databases", "*.db *.sqlite *.sqlite3")])
             if not path:
                 return
             doc.sql_db = path
@@ -9641,7 +9670,7 @@ class Notepad:
             return
         path = filedialog.asksaveasfilename(title="Export as HTML", defaultextension=".html",
                                             initialfile=os.path.splitext(doc.name())[0] + ".html",
-                                            filetypes=[("HTML", "*.html")])
+                                            filetypes=[("All files", "*.*"), ("HTML", "*.html")])
         if not path:
             return
         numbers = messagebox.askyesno(APP, "Include line numbers?")
@@ -9661,7 +9690,7 @@ class Notepad:
             return
         path = filedialog.asksaveasfilename(title="Export as PDF", defaultextension=".pdf",
                                             initialfile=os.path.splitext(doc.name())[0] + ".pdf",
-                                            filetypes=[("PDF", "*.pdf")])
+                                            filetypes=[("All files", "*.*"), ("PDF", "*.pdf")])
         if not path:
             return
         numbers = messagebox.askyesno(APP, "Include line numbers?")
@@ -10575,8 +10604,9 @@ class Notepad:
             os.path.dirname(path) if path else self.explorer_root)
         if path and os.path.isfile(path):
             m.add_command(label="Open", command=lambda: self.open_file(path))
-            m.add_command(label="Open in New Window", command=lambda: subprocess.Popen(
-                [sys.executable, SCRIPT_PATH, "--new-window", path]))
+            m.add_command(label="Open in New Window", command=lambda: (
+                lambda cmd: cmd and subprocess.Popen(cmd))(
+                self.relaunch_command("--new-window", path)))
             m.add_separator()
         m.add_command(label="New File...", command=lambda: self.explorer_new(False, folder))
         m.add_command(label="New Folder...", command=lambda: self.explorer_new(True, folder))
@@ -11393,7 +11423,7 @@ def main():
                         help="open a new window instead of using the running one")
     parser.add_argument("--selftest", action="store_true",
                         help="run the built-in tests and exit")
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
     if args.selftest:
         sys.exit(run_self_test())
     stdin_text = None
@@ -11419,5 +11449,5 @@ def main():
     root.mainloop()
 
 
-if __name__ == "__main__":
+if globals().get("__name__", "__main__") == "__main__":
     main()
