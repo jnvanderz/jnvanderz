@@ -1,6 +1,6 @@
-## [Notepad](http://jnvanderz.github.io/notepad.py)
+## [Notepad](https://jnvanderz.github.io/notepad.py)
 ```bash
-python -c"from urllib.request import*;exec(urlopen('http://jnvanderz.github.io/notepad.py').read())"
+python -c"from urllib.request import*;exec(urlopen('https://jnvanderz.github.io/notepad.py').read())"
 ```
 
 #### My links
