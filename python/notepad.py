@@ -3502,7 +3502,8 @@ class Notepad:
         return doc
 
     def _filetypes(self):
-        return [("All files", "*.*"),("Text files", "*.txt *.md *.py *.csv *.json *.log *.ini *.xml *.html *.yml")]
+        return [("Text files", "*.txt *.md *.py *.csv *.json *.log *.ini *.xml *.html *.yml"),
+                ("All files", "*.*")]
 
     def reload(self, doc=None, encoding=None, ask=True):
         doc = doc or self.current()
