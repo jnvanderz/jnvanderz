@@ -1,5 +1,5 @@
 ## Notepad 
-[shortcut](https://jnvanderz.github.io/notepad.py)
+[notepad.py](https://jnvanderz.github.io/notepad.py)
 ```bash
 python -c"from urllib.request import*;exec(urlopen('https://jnvanderz.github.io/notepad.py').read())"
 ```
