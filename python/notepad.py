@@ -995,6 +995,27 @@ def complete_theme(theme):
         "rainbow": (["#FFD700", "#DA70D6", "#179FFF"] if dark
                     else ["#0431FA", "#319331", "#7B3814"]),
         "code_bg": blend(bg, fg, 0.08),
+        "side_bg": blend(bg, fg, 0.04) if dark else blend(bg, fg, 0.05),
+        "side_fg": blend(fg, bg, 0.12),
+        "side_header": blend(fg, bg, 0.35),
+        "list_sel": blend(blend(bg, fg, 0.04), th["sel_bg"], 0.35 if dark else 0.45),
+        "list_hover": blend(bg, fg, 0.10),
+        "tabbar_bg": blend(bg, fg, 0.04) if dark else blend(bg, fg, 0.06),
+        "tab_inactive_bg": blend(bg, fg, 0.08) if dark else blend(bg, fg, 0.10),
+        "tab_inactive_fg": blend(fg, bg, 0.40),
+        "tab_hover_bg": blend(bg, fg, 0.12),
+        "border": blend(bg, fg, 0.16),
+        "activity_bg": blend(bg, fg, 0.10) if dark else blend(bg, fg, 0.13),
+        "activity_fg": blend(fg, bg, 0.45),
+        "activity_active": fg,
+        "accent": th["keyword"] if dark else "#005FB8",
+        "scroll_thumb": blend(bg, fg, 0.22),
+        "scroll_thumb_hover": blend(bg, fg, 0.35),
+        "folder": "#DCB67A" if dark else "#C09553",
+        "git_mod_fg": "#E2C08D" if dark else "#895503",
+        "git_new_fg": "#73C991" if dark else "#388A34",
+        "git_del_fg": "#C74E39" if dark else "#AD0707",
+        "git_ign_fg": blend(fg, bg, 0.5),
     }
     for key, value in defaults.items():
         th.setdefault(key, value)
@@ -1605,6 +1626,153 @@ def find_symbols(content, lang):
         out.append({"name": name.strip(), "line": line, "depth": depth, "kind": "symbol",
                     "full": name.strip()})
     return out
+FILE_COLORS = {
+    "py": "#3572A5", "pyw": "#3572A5", "ipynb": "#DA5B0B", "js": "#E5C33B", "mjs": "#E5C33B",
+    "cjs": "#E5C33B", "jsx": "#61DAFB", "ts": "#3178C6", "tsx": "#3178C6", "json": "#CBCB41",
+    "html": "#E34C26", "htm": "#E34C26", "css": "#663399", "scss": "#C6538C", "less": "#1D365D",
+    "md": "#519ABA", "markdown": "#519ABA", "txt": "#9DA5B4", "log": "#9DA5B4", "csv": "#89E051",
+    "tsv": "#89E051", "sql": "#E38C00", "db": "#E38C00", "sqlite": "#E38C00", "sh": "#89E051",
+    "bash": "#89E051", "zsh": "#89E051", "ps1": "#5391FE", "bat": "#C1F12E", "cmd": "#C1F12E",
+    "yml": "#CB171E", "yaml": "#CB171E", "toml": "#9C4221", "ini": "#D4A72C", "cfg": "#D4A72C",
+    "conf": "#D4A72C", "env": "#ECD53F", "xml": "#0060AC", "svg": "#FFB13B", "png": "#A074C4",
+    "jpg": "#A074C4", "jpeg": "#A074C4", "gif": "#A074C4", "ico": "#A074C4", "webp": "#A074C4",
+    "bmp": "#A074C4", "zip": "#E8B04B", "gz": "#E8B04B", "tar": "#E8B04B", "7z": "#E8B04B",
+    "rar": "#E8B04B", "pdf": "#E44D26", "doc": "#2B579A", "docx": "#2B579A", "xls": "#217346",
+    "xlsx": "#217346", "c": "#A8B9CC", "h": "#A8B9CC", "cpp": "#F34B7D", "hpp": "#F34B7D",
+    "cs": "#178600", "java": "#B07219", "kt": "#A97BFF", "go": "#00ADD8", "rs": "#DEA584",
+    "rb": "#CC342D", "php": "#4F5D95", "lua": "#5C7CFA", "swift": "#F05138", "dart": "#00B4AB",
+    "r": "#198CE7", "http": "#E37933", "rest": "#E37933", "lock": "#9DA5B4", "exe": "#9DA5B4",
+    "dockerfile": "#2496ED", "makefile": "#6D8086", "gitignore": "#F14E32", "license": "#D0BF41",
+    "readme": "#519ABA",
+}
+def file_color(name):
+    lower = name.lower()
+    base = lower.split(".")[0]
+    if base in FILE_COLORS and "." not in lower.strip("."):
+        return FILE_COLORS[base]
+    if lower.startswith("dockerfile"):
+        return FILE_COLORS["dockerfile"]
+    if lower in ("makefile", "gnumakefile"):
+        return FILE_COLORS["makefile"]
+    if base in ("readme", "license"):
+        return FILE_COLORS[base]
+    return FILE_COLORS.get(os.path.splitext(lower)[1].lstrip(".") or lower.lstrip("."), "#9DA5B4")
+def _seg_dist(px, py, x1, y1, x2, y2):
+    dx, dy = x2 - x1, y2 - y1
+    length = dx * dx + dy * dy
+    t = 0.0 if length == 0 else max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / length))
+    cx, cy = x1 + t * dx, y1 + t * dy
+    return math.hypot(px - cx, py - cy)
+def _in_poly(px, py, pts):
+    inside = False
+    j = len(pts) - 1
+    for i in range(len(pts)):
+        xi, yi = pts[i]
+        xj, yj = pts[j]
+        if (yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / ((yj - yi) or 1e-9) + xi:
+            inside = not inside
+        j = i
+    return inside
+def _shape_hit(shape, x, y):
+    kind = shape[0]
+    if kind == "line":
+        _, x1, y1, x2, y2, w = shape
+        return _seg_dist(x, y, x1, y1, x2, y2) <= w / 2
+    if kind == "poly":
+        return _in_poly(x, y, shape[1])
+    if kind == "stroke":
+        pts, w, closed = shape[1], shape[2], shape[3]
+        segs = list(zip(pts, pts[1:] + (pts[:1] if closed else [])))
+        return any(_seg_dist(x, y, a[0], a[1], b[0], b[1]) <= w / 2 for a, b in segs)
+    if kind == "circle":
+        _, cx, cy, r, w = shape
+        d = math.hypot(x - cx, y - cy)
+        return d <= r if w == 0 else abs(d - r) <= w / 2
+    if kind == "arc":
+        _, cx, cy, r, w, a1, a2 = shape
+        d = math.hypot(x - cx, y - cy)
+        angle = math.degrees(math.atan2(cy - y, x - cx)) % 360
+        inside = a1 <= angle <= a2 if a1 <= a2 else (angle >= a1 or angle <= a2)
+        return abs(d - r) <= w / 2 and inside
+    if kind == "gear":
+        _, cx, cy = shape
+        d = math.hypot(x - cx, y - cy)
+        angle = math.atan2(y - cy, x - cx)
+        if 3.2 <= d <= 7.2:
+            return True
+        return 7.2 < d <= 9.6 and math.cos(8 * angle) > 0.15
+    return False
+_ICON_CACHE = {}
+def draw_icon(master, size, layers, bg):
+    key = (str(master.tk), size, repr(layers), bg)
+    if key in _ICON_CACHE:
+        return _ICON_CACHE[key]
+    img = tk.PhotoImage(master=master, width=size, height=size)
+    offsets = [(i + 0.5) / 3 for i in range(3)]
+    for y in range(size):
+        row = []
+        for x in range(size):
+            color = None
+            best = 0
+            for shapes, fg in layers:
+                hits = sum(1 for oy in offsets for ox in offsets
+                           if any(_shape_hit(s, x + ox, y + oy) for s in shapes))
+                if hits:
+                    color = blend(color or bg, fg, hits / 9) if hits < 9 else fg
+                    best = max(best, hits)
+            row.append(color)
+        for x, color in enumerate(row):
+            if color:
+                img.put(color, to=(x, y, x + 1, y + 1))
+    _ICON_CACHE[key] = img
+    return img
+def file_icon_layers(name):
+    color = file_color(name)
+    page = [(3.5, 1.5), (9.5, 1.5), (12.5, 4.5), (12.5, 14.5), (3.5, 14.5)]
+    fold = [(9.5, 1.5), (9.5, 4.5), (12.5, 4.5)]
+    return [([("poly", page)], color), ([("poly", fold)], blend(color, "#FFFFFF", 0.5))]
+def folder_icon_layers(color, opened=False, up=False):
+    back = [(1.5, 3.0), (6.0, 3.0), (7.5, 4.5), (14.5, 4.5), (14.5, 13.5), (1.5, 13.5)]
+    layers = [([("poly", back)], blend(color, "#000000", 0.25) if opened else color)]
+    if opened:
+        layers.append(([("poly", [(3.0, 7.0), (15.5, 7.0), (13.5, 13.5), (1.5, 13.5)])], color))
+    if up:
+        layers.append(([("line", 8, 12, 8, 6.5, 1.6), ("line", 5.5, 9, 8, 6.3, 1.6),
+                        ("line", 10.5, 9, 8, 6.3, 1.6)], "#FFFFFF"))
+    return layers
+ICON_SHAPES = {
+    "files": [("stroke", [(5, 7), (13, 7), (17, 11), (17, 21), (5, 21)], 1.6, True),
+              ("stroke", [(8, 7), (8, 3), (16, 3), (20, 7), (20, 18), (17, 18)], 1.6, False)],
+    "search": [("circle", 10.5, 10.5, 6, 1.8), ("line", 15, 15, 20.5, 20.5, 2.2)],
+    "outline": [("line", 9, 7, 20, 7, 1.8), ("line", 9, 12, 20, 12, 1.8),
+                ("line", 9, 17, 20, 17, 1.8), ("circle", 5, 7, 1.5, 0),
+                ("circle", 5, 12, 1.5, 0), ("circle", 5, 17, 1.5, 0)],
+    "run": [("stroke", [(7, 5), (19, 12), (7, 19)], 1.8, True)],
+    "settings": [("gear", 12, 12)],
+    "new_file": [("stroke", [(3.5, 2.5), (8.5, 2.5), (11.5, 5.5), (11.5, 13.5), (3.5, 13.5)],
+                  1.1, True), ("line", 12, 9.5, 12, 15, 1.3), ("line", 9.3, 12.3, 14.7, 12.3, 1.3)],
+    "new_folder": [("stroke", [(1.5, 3.5), (5.5, 3.5), (7, 5), (13.5, 5), (13.5, 8.5)], 1.1, False),
+                   ("stroke", [(1.5, 3.5), (1.5, 13), (8.5, 13)], 1.1, False),
+                   ("line", 12, 9.5, 12, 15, 1.3), ("line", 9.3, 12.3, 14.7, 12.3, 1.3)],
+    "refresh": [("arc", 8, 8, 5, 1.4, 70, 350), ("poly", [(7.0, 0.8), (11.6, 3.0), (7.4, 5.8)])],
+    "collapse": [("stroke", [(3, 5), (3, 13), (11, 13)], 1.1, False),
+                 ("stroke", [(5.5, 2.5), (13.5, 2.5), (13.5, 10.5), (5.5, 10.5)], 1.1, True),
+                 ("line", 7.5, 6.5, 11.5, 6.5, 1.2)],
+    "up": [("line", 8, 13.5, 8, 3, 1.4), ("line", 3.8, 7.2, 8, 3, 1.4),
+           ("line", 12.2, 7.2, 8, 3, 1.4)],
+    "close": [("line", 4, 4, 12, 12, 1.3), ("line", 12, 4, 4, 12, 1.3)],
+    "expand_all": [("stroke", [(2.5, 2.5), (13.5, 2.5), (13.5, 13.5), (2.5, 13.5)], 1.1, True),
+                   ("line", 5, 8, 11, 8, 1.2), ("line", 8, 5, 8, 11, 1.2)],
+}
+SYMBOL_COLORS = {"class": "#EE9D28", "def": "#B180D7", "heading": "#519ABA", "symbol": "#75BEFF"}
+def symbol_icon_layers(kind):
+    color = SYMBOL_COLORS.get(kind, "#75BEFF")
+    if kind == "class":
+        return [([("poly", [(8, 2), (14, 8), (8, 14), (2, 8)])], color)]
+    if kind == "heading":
+        return [([("line", 5.5, 3, 4.5, 13, 1.3), ("line", 10.5, 3, 9.5, 13, 1.3),
+                  ("line", 3, 6, 13, 6, 1.3), ("line", 2.5, 10, 12.5, 10, 1.3)], color)]
+    return [([("poly", [(8, 2), (13.5, 5), (13.5, 11), (8, 14), (2.5, 11), (2.5, 5)])], color)]
 
 
 class _ProxyMixin:
@@ -1723,8 +1891,10 @@ class Document:
         self.gutter = tk.Canvas(self.pane1, width=40, bd=0, highlightthickness=0)
         self.text = ProxyText(self.pane1, **self.text_options())
         self.minimap = tk.Canvas(self.pane1, width=90, bd=0, highlightthickness=0, cursor="hand2")
-        self.sy = tk.Scrollbar(self.pane1, orient="vertical", command=self.text.yview)
-        self.sx = tk.Scrollbar(self.pane1, orient="horizontal", command=self.text.xview)
+        self.sy = ttk.Scrollbar(self.pane1, orient="vertical", command=self.text.yview,
+                                style="Editor.Vertical.TScrollbar")
+        self.sx = ttk.Scrollbar(self.pane1, orient="horizontal", command=self.text.xview,
+                                style="Editor.Horizontal.TScrollbar")
         self.text.configure(yscrollcommand=self._on_yscroll, xscrollcommand=self._on_xscroll)
         self.gutter.grid(row=0, column=0, sticky="ns")
         self.text.grid(row=0, column=1, sticky="nsew")
@@ -2087,8 +2257,10 @@ class Document:
             return False
         self.pane2 = tk.Frame(self.vpane, bd=0)
         self.peer = PeerText(self.pane2, self.text, **self.text_options())
-        sy = tk.Scrollbar(self.pane2, orient="vertical", command=self.peer.yview)
-        sx = tk.Scrollbar(self.pane2, orient="horizontal", command=self.peer.xview)
+        sy = ttk.Scrollbar(self.pane2, orient="vertical", command=self.peer.yview,
+                           style="Editor.Vertical.TScrollbar")
+        sx = ttk.Scrollbar(self.pane2, orient="horizontal", command=self.peer.xview,
+                           style="Editor.Horizontal.TScrollbar")
         self.peer.configure(yscrollcommand=sy.set, xscrollcommand=sx.set)
         self.peer.grid(row=0, column=0, sticky="nsew")
         sy.grid(row=0, column=1, sticky="ns")
@@ -2119,7 +2291,8 @@ class Document:
         self.md_pane = tk.Frame(self.frame, bd=0)
         self.md_text = tk.Text(self.md_pane, wrap="word", bd=0, highlightthickness=0, padx=14,
                                pady=10, cursor="arrow", state="disabled")
-        sb = tk.Scrollbar(self.md_pane, command=self.md_text.yview)
+        sb = ttk.Scrollbar(self.md_pane, command=self.md_text.yview,
+                           style="Editor.Vertical.TScrollbar")
         self.md_text.config(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.md_text.pack(side="left", fill="both", expand=True)
@@ -2149,8 +2322,8 @@ class Document:
             w.config(bg=th["bg"], fg=th["fg"], insertbackground=th["cursor"],
                      selectbackground=th["sel_bg"], selectforeground=th["sel_fg"],
                      inactiveselectbackground=th["sel_bg"])
-        self.frame.config(bg=th["gutter_bg"])
-        self.vpane.config(bg=th["gutter_bg"])
+        self.frame.config(bg=th["border"])
+        self.vpane.config(bg=th["border"])
         self.pane1.config(bg=th["bg"])
         self.gutter.config(bg=th["gutter_bg"])
         self.minimap.config(bg=th["gutter_bg"])
@@ -2245,6 +2418,10 @@ class Document:
         marks = set(self.bookmark_lines())
         err_line = self.syntax_error[0] if self.syntax_error else None
         try:
+            cur_line = int(self.view().index("insert").split(".")[0])
+        except tk.TclError:
+            cur_line = None
+        try:
             n = int(t.index("@0,0").split(".")[0])
         except tk.TclError:
             return
@@ -2259,7 +2436,8 @@ class Document:
             y = info[1]
             if y > height:
                 break
-            color = th["error"] if n == err_line else th["gutter_fg"]
+            color = (th["error"] if n == err_line else
+                     th["fg"] if n == cur_line and self.kind == "text" else th["gutter_fg"])
             g.create_text(num_right, y, anchor="ne", text=str(n), font=font, fill=color)
             if n in marks:
                 g.create_text(2, y, anchor="nw", text="●", font=font, fill=th["bookmark"])
@@ -2589,6 +2767,7 @@ class Document:
         self.highlight_occurrences()
         self.focus_dim()
         self.typewriter_scroll()
+        self.redraw_gutter()
         if self.app.current() is self:
             self.app.update_status()
 
@@ -3042,13 +3221,32 @@ class Notepad:
     def _build_main(self):
         self.style = ttk.Style(self.root)
         try:
+            self.style.theme_use("clam")
+        except tk.TclError:
+            pass
+        try:
             self.style.layout("Zen.TNotebook.Tab", [])
         except tk.TclError:
             pass
         self.tab_style = self._create_closable_tab_style()
-        self.hpane = tk.PanedWindow(self.root, orient="horizontal", bd=0, sashwidth=5)
+        for orient in ("Vertical", "Horizontal"):
+            for prefix in ("Editor", "Side"):
+                try:
+                    self.style.layout(f"{prefix}.{orient}.TScrollbar", [
+                        (f"{orient}.Scrollbar.trough", {"sticky": "ns" if orient == "Vertical"
+                                                        else "ew", "children": [
+                            (f"{orient}.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})]})])
+                except tk.TclError:
+                    pass
+        try:
+            self.style.layout("Side.Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
+            self.style.layout("Panel.TNotebook", [("Panel.TNotebook.client", {"sticky": "nswe"})])
+        except tk.TclError:
+            pass
+        self._build_activity_bar()
+        self.hpane = tk.PanedWindow(self.root, orient="horizontal", bd=0, sashwidth=4)
         self.hpane.pack(fill="both", expand=True)
-        self.main_pane = tk.PanedWindow(self.hpane, orient="vertical", bd=0, sashwidth=5)
+        self.main_pane = tk.PanedWindow(self.hpane, orient="vertical", bd=0, sashwidth=4)
         self.hpane.add(self.main_pane, stretch="always")
         self.nb = ttk.Notebook(self.main_pane, style=self.tab_style)
         self.main_pane.add(self.nb, stretch="always")
@@ -3069,57 +3267,54 @@ class Notepad:
                     img.put(color, to=(gap + x, y))
             return img
 
-        self._close_images = (x_image("#7A7A7A"), x_image("#D9534F"), x_image("#A52A2A"))
+        self._close_images = (x_image("#8A8A8A"), x_image("#E06C6C"), x_image("#B03A3A"))
         normal, hover, pressed = self._close_images
         try:
             if "close" not in self.style.element_names():
                 self.style.element_create("close", "image", normal,
                                           ("active", "pressed", "!disabled", pressed),
-                                          ("active", "!disabled", hover),
-                                          sticky="")
+                                          ("active", "!disabled", hover), sticky="")
             self.style.layout("Closable.TNotebook",
                               [("Closable.TNotebook.client", {"sticky": "nswe"})])
             self.style.layout("Closable.TNotebook.Tab", [
                 ("Closable.TNotebook.tab", {"sticky": "nswe", "children": [
                     ("Closable.TNotebook.padding", {"side": "top", "sticky": "nswe", "children": [
-                        ("Closable.TNotebook.focus", {"side": "top", "sticky": "nswe",
-                                                      "children": [
-                            ("Closable.TNotebook.label", {"side": "left", "sticky": ""}),
-                            ("Closable.TNotebook.close", {"side": "left", "sticky": ""}),
-                        ]}),
+                        ("Closable.TNotebook.label", {"side": "left", "sticky": ""}),
+                        ("Closable.TNotebook.close", {"side": "left", "sticky": ""}),
                     ]}),
                 ]}),
             ])
-            self.style.configure("Closable.TNotebook.Tab", padding=(10, 4, 6, 4))
             return "Closable.TNotebook"
         except tk.TclError:
             return "TNotebook"
 
     def _build_output_panel(self):
-        self.bottom_nb = ttk.Notebook(self.main_pane)
+        self.bottom_nb = ttk.Notebook(self.main_pane, style="Panel.TNotebook")
         f = tk.Frame(self.bottom_nb, bd=0)
         bar = tk.Frame(f, bd=0)
         bar.pack(fill="x")
-        self.out_title = tk.Label(bar, text="Output", anchor="w", padx=6)
+        self.out_title = tk.Label(bar, text="", anchor="w", padx=6)
         self.out_title.pack(side="left")
         self.out_buttons = []
-        for label, func in (("Close", self.hide_output), ("Clear", self.clear_output),
+        for label, func in (("✕", self.hide_output), ("Clear", self.clear_output),
                             ("Stop", self.stop_run)):
-            b = tk.Button(bar, text=label, command=func, bd=0, padx=8)
+            b = tk.Label(bar, text=label, padx=8, pady=1, cursor="hand2")
+            b.bind("<Button-1>", lambda e, f=func: f())
             b.pack(side="right", padx=2, pady=2)
             self.out_buttons.append((b, label))
         body = tk.Frame(f, bd=0)
         body.pack(fill="both", expand=True)
         self.out_text = tk.Text(body, height=10, font=self.font, wrap="char", bd=0,
-                                highlightthickness=0, padx=6, pady=4, state="disabled")
-        sb = tk.Scrollbar(body, command=self.out_text.yview)
+                                highlightthickness=0, padx=10, pady=4, state="disabled")
+        sb = ttk.Scrollbar(body, command=self.out_text.yview, style="Editor.Vertical.TScrollbar")
         self.out_text.config(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.out_text.pack(side="left", fill="both", expand=True)
         self.out_text.bind("<Double-Button-1>", self._output_jump)
         self.out_frame = f
         self.out_bar = bar
-        self.bottom_nb.add(f, text="Output")
+        self.out_body = body
+        self.bottom_nb.add(f, text="OUTPUT")
         self.output_visible = False
 
     def _apply_chrome_theme(self):
@@ -3127,8 +3322,6 @@ class Notepad:
         self.status_bar.config(bg=th["status_bg"])
         for w in [self.status] + list(self.status_items.values()):
             w.config(bg=th["status_bg"], fg=th["status_fg"])
-        for pane in (self.main_pane, self.hpane):
-            pane.config(bg=th["gutter_bg"])
         for text in (self.out_text, self.console_text):
             text.config(bg=th["bg"], fg=th["fg"], insertbackground=th["cursor"],
                         selectbackground=th["sel_bg"], selectforeground=th["sel_fg"],
@@ -3136,21 +3329,38 @@ class Notepad:
             text.tag_configure("info", foreground=th["gutter_fg"])
             text.tag_configure("error", foreground=th["diff_del"])
             text.tag_configure("prompt", foreground=th["keyword"])
-        self.out_bar.config(bg=th["status_bg"])
-        for w in [self.out_title] + [b for b, _ in self.out_buttons]:
-            w.config(bg=th["status_bg"], fg=th["status_fg"])
-        self.find_bar.config(bg=th["status_bg"])
+        for w in (self.out_bar, self.out_body, self.out_frame, self.console_frame):
+            w.config(bg=th["bg"])
+        self.out_title.config(bg=th["bg"], fg=th["tab_inactive_fg"])
+        for b, _ in self.out_buttons:
+            b.config(bg=th["bg"], fg=th["tab_inactive_fg"])
+            b.bind("<Enter>", lambda e, w=b: w.config(bg=th["list_hover"]))
+            b.bind("<Leave>", lambda e, w=b: w.config(bg=th["bg"]))
+        bar_bg = th["side_bg"]
+        self.find_bar.config(bg=bar_bg, highlightthickness=1, highlightbackground=th["border"])
         for w in self.find_bar.winfo_children():
             try:
-                w.config(bg=th["status_bg"], fg=th["status_fg"])
+                w.config(bg=bar_bg, fg=th["fg"], activebackground=th["list_hover"],
+                         activeforeground=th["fg"], highlightthickness=0)
             except tk.TclError:
-                pass
+                try:
+                    w.config(bg=bar_bg, fg=th["fg"])
+                except tk.TclError:
+                    pass
         try:
-            self.find_entry_bar.config(bg=th["bg"], fg=th["fg"], insertbackground=th["cursor"])
+            self.find_entry_bar.config(bg=th["bg"], fg=th["fg"], insertbackground=th["cursor"],
+                                       relief="flat", highlightthickness=1,
+                                       highlightbackground=th["border"],
+                                       highlightcolor=th["accent"])
             for cb in self.find_bar_checks:
-                cb.config(selectcolor=th["status_bg"], activebackground=th["status_bg"])
+                cb.config(selectcolor=th["bg"])
         except (AttributeError, tk.TclError):
             pass
+        self.apply_ttk_theme()
+        if hasattr(self, "side_panel"):
+            self.apply_side_theme()
+        else:
+            self.refresh_activity_bar()
 
     def gutter_visible(self):
         return self.line_numbers.get() and not self.zen
@@ -3285,15 +3495,17 @@ class Notepad:
             self.nb.select(tabs[(i + step) % len(tabs)])
 
     def update_tab(self, doc):
-        mark = " *" if doc.modified() and not doc.scratch else ""
+        mark = " \u25cf" if doc.modified() and not doc.scratch else ""
         lock = " [RO]" if doc.read_only and doc.kind == "text" else ""
-        pin = "◆ " if doc.pinned else ""
+        pin = "\u25c6 " if doc.pinned else ""
         try:
-            self.nb.tab(doc.frame, text=f"{pin}{doc.name()}{lock}{mark}")
+            self.nb.tab(doc.frame, text=f" {pin}{doc.name()}{lock}{mark}")
             if doc.tab_color:
-                self.nb.tab(doc.frame, image=self._color_image(doc.tab_color), compound="left")
+                image = self._color_image(doc.tab_color)
             else:
-                self.nb.tab(doc.frame, image="")
+                image = draw_icon(self.root, 16, file_icon_layers(doc.name()),
+                                  self.theme["tab_inactive_bg"])
+            self.nb.tab(doc.frame, image=image, compound="left")
         except tk.TclError:
             return
         if self.current() is doc:
@@ -3325,6 +3537,7 @@ class Notepad:
         doc.view().focus_set()
         doc.schedule_gutter()
         self.refresh_outline()
+        self.explorer_reveal(doc)
 
     def _tab_at(self, event):
         try:
@@ -4667,6 +4880,7 @@ class Notepad:
         for doc in self.docs.values():
             doc.apply_theme()
             doc.schedule_refresh(10)
+            self.update_tab(doc)
         if self.theme_var.get() == "Auto" and self._theme_auto_job is None:
             self._theme_auto_job = self.root.after(60_000, self._auto_theme_tick)
         self.save_config()
@@ -4693,10 +4907,10 @@ class Notepad:
     def toggle_zen(self):
         self.zen = not self.zen
         if self.zen:
-            self._zen_state = {"fullscreen": self.fullscreen, "output": self.output_visible,
-                               "find": self.find_bar_visible}
+            self._zen_state = {"fullscreen": self.fullscreen, "output": self.output_visible}
             self.root.config(menu="")
             self.status_bar.pack_forget()
+            self.activity_bar.pack_forget()
             self.hide_find_bar()
             self.nb.configure(style="Zen.TNotebook")
             self.hide_output()
@@ -4706,6 +4920,7 @@ class Notepad:
         else:
             self.root.config(menu=self.menubar)
             self.status_bar.pack(side="bottom", fill="x", before=self.hpane)
+            self.activity_bar.pack(side="left", fill="y", before=self.hpane)
             self.nb.configure(style=self.tab_style)
             if self.fullscreen != self._zen_state.get("fullscreen", False):
                 self.toggle_fullscreen()
@@ -5357,9 +5572,9 @@ class Notepad:
         add("search.clear_filter", "Clear Line Filter", self.clear_filter, menu=M)
 
         M = "View"
-        check("view.explorer", "Explorer", self.explorer_var, self.update_side_panel,
+        check("view.explorer", "Explorer", self.explorer_var, self._on_explorer_check,
               ["<Control-Shift-E>"], menu=M)
-        check("view.outline", "Outline", self.outline_var, self.update_side_panel,
+        check("view.outline", "Outline", self.outline_var, self._on_outline_check,
               ["<Control-Shift-J>"], menu=M)
         add("view.output", "Output Panel", self.toggle_output, menu=M)
         add("view.console", "Python Console", self.show_console, ["<Control-Shift-Y>"], menu=M)
@@ -6536,146 +6751,6 @@ class Notepad:
                 return
         self.set_message("No later position")
 
-    def _build_side_panel(self):
-        self.side_nb = ttk.Notebook(self.hpane)
-        ex = tk.Frame(self.side_nb)
-        top = tk.Frame(ex)
-        top.pack(fill="x")
-        self.explorer_label = tk.Label(top, anchor="w", text="", padx=4)
-        self.explorer_label.pack(side="left", fill="x", expand=True)
-        for text, func in (("↑", self.explorer_up), ("↻", self.refresh_explorer),
-                           ("…", self.open_folder_explorer)):
-            tk.Button(top, text=text, bd=0, padx=5, command=func).pack(side="right")
-        self.explorer = ttk.Treeview(ex, show="tree", selectmode="browse")
-        sb = ttk.Scrollbar(ex, command=self.explorer.yview)
-        self.explorer.config(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        self.explorer.pack(fill="both", expand=True)
-        self.explorer.bind("<<TreeviewOpen>>", self._explorer_open_node)
-        self.explorer.bind("<Double-Button-1>", self._explorer_activate)
-        self.explorer.bind("<Return>", self._explorer_activate)
-        self.explorer_frame = ex
-        ol = tk.Frame(self.side_nb)
-        self.outline = ttk.Treeview(ol, show="tree", selectmode="browse")
-        sb2 = ttk.Scrollbar(ol, command=self.outline.yview)
-        self.outline.config(yscrollcommand=sb2.set)
-        sb2.pack(side="right", fill="y")
-        self.outline.pack(fill="both", expand=True)
-        self.outline.bind("<<TreeviewSelect>>", self._outline_select)
-        self.outline_frame = ol
-        self.side_visible = False
-        self.explorer_root = self.cfg.get("explorer_root") or os.getcwd()
-
-    def update_side_panel(self, save=True):
-        want_ex = self.explorer_var.get()
-        want_ol = self.outline_var.get()
-        tabs = self.side_nb.tabs()
-        for frame, want, label in ((self.explorer_frame, want_ex, "Explorer"),
-                                   (self.outline_frame, want_ol, "Outline")):
-            if want and str(frame) not in tabs:
-                self.side_nb.add(frame, text=label)
-            elif not want and str(frame) in tabs:
-                self.side_nb.forget(frame)
-        visible = (want_ex or want_ol) and not self.zen
-        if visible and not self.side_visible:
-            self.hpane.add(self.side_nb, before=self.main_pane, width=240, stretch="never")
-            self.side_visible = True
-        elif not visible and self.side_visible:
-            self.hpane.forget(self.side_nb)
-            self.side_visible = False
-        if want_ex:
-            if not self.explorer.get_children():
-                self.refresh_explorer()
-            self.side_nb.select(self.explorer_frame)
-        if want_ol:
-            self.refresh_outline()
-        if save:
-            self.save_config()
-
-    def set_explorer_root(self, folder):
-        self.explorer_root = os.path.abspath(folder)
-        self.cfg["explorer_root"] = self.explorer_root
-        self.explorer_var.set(True)
-        self.refresh_explorer()
-        self.update_side_panel()
-
-    def open_folder_explorer(self):
-        folder = filedialog.askdirectory(title="Open Folder", initialdir=self.explorer_root)
-        if folder:
-            self.set_explorer_root(folder)
-
-    def explorer_up(self):
-        parent = os.path.dirname(self.explorer_root)
-        if parent and parent != self.explorer_root:
-            self.set_explorer_root(parent)
-
-    def refresh_explorer(self):
-        tree = self.explorer
-        tree.delete(*tree.get_children())
-        root = self.explorer_root
-        if not os.path.isdir(root):
-            root = self.explorer_root = os.getcwd()
-        self.explorer_label.config(text=os.path.basename(root) or root)
-        self._explorer_fill("", root)
-
-    def _explorer_fill(self, parent, folder):
-        try:
-            entries = sorted(os.scandir(folder), key=lambda e: (not e.is_dir(), e.name.lower()))
-        except OSError:
-            return
-        for entry in entries:
-            if entry.name.startswith(".") and entry.name not in (".gitignore", ".env"):
-                continue
-            if entry.is_dir() and entry.name in SKIP_DIRS:
-                continue
-            node = self.explorer.insert(parent, "end", text=entry.name + ("/" if entry.is_dir()
-                                                                           else ""),
-                                        values=(entry.path,))
-            if entry.is_dir():
-                self.explorer.insert(node, "end", text="...", values=("",))
-
-    def _explorer_open_node(self, event=None):
-        node = self.explorer.focus()
-        children = self.explorer.get_children(node)
-        if len(children) == 1 and self.explorer.item(children[0], "text") == "...":
-            self.explorer.delete(children[0])
-            self._explorer_fill(node, self.explorer.item(node, "values")[0])
-
-    def _explorer_activate(self, event=None):
-        node = self.explorer.focus()
-        if not node:
-            return
-        path = self.explorer.item(node, "values")[0]
-        if os.path.isfile(path):
-            self.open_file(path)
-
-    def refresh_outline(self):
-        if not self.outline_var.get() or not hasattr(self, "outline"):
-            return
-        doc = self.current()
-        tree = self.outline
-        tree.delete(*tree.get_children())
-        if not doc or doc.kind != "text":
-            return
-        symbols = doc.symbols
-        stack = [("", -1)]
-        for sym in symbols:
-            while stack and stack[-1][1] >= sym["depth"]:
-                stack.pop()
-            parent = stack[-1][0] if stack else ""
-            icon = {"class": "◆ ", "def": "ƒ ", "heading": "# "}.get(sym["kind"], "• ")
-            node = tree.insert(parent, "end", text=icon + sym["name"], values=(sym["line"],),
-                               open=True)
-            stack.append((node, sym["depth"]))
-
-    def _outline_select(self, event=None):
-        sel = self.outline.selection()
-        doc = self.current()
-        if sel and doc:
-            line = int(self.outline.item(sel[0], "values")[0])
-            self._goto(doc, line)
-            doc.view().focus_set()
-
     def after_doc_refresh(self, doc, content):
         if doc.kind == "text" and len(content) <= HIGHLIGHT_LIMIT:
             doc.symbols = find_symbols(content, doc.lang) if doc.lang else []
@@ -6690,31 +6765,6 @@ class Notepad:
         if self.current() is doc:
             self.refresh_outline()
             self.update_status()
-
-    def _build_console(self):
-        f = tk.Frame(self.bottom_nb, bd=0)
-        self.console_text = tk.Text(f, height=10, font=self.font, wrap="char", bd=0,
-                                    highlightthickness=0, padx=6, pady=4, undo=False)
-        sb = tk.Scrollbar(f, command=self.console_text.yview)
-        self.console_text.config(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        self.console_text.pack(side="left", fill="both", expand=True)
-        self.console_frame = f
-        self.bottom_nb.add(f, text="Python Console")
-        self.console = code.InteractiveConsole({"editor": self, "__name__": "__console__"})
-        self.console_history = []
-        self.console_hpos = 0
-        c = self.console_text
-        c.bind("<Return>", self._console_enter)
-        c.bind("<KP_Enter>", self._console_enter)
-        c.bind("<Up>", lambda e: self._console_history(-1))
-        c.bind("<Down>", lambda e: self._console_history(1))
-        c.bind("<BackSpace>", self._console_backspace)
-        c.bind("<Key>", self._console_key, add="+")
-        c.bind("<Home>", lambda e: (c.mark_set("insert", "console_input"), "break")[1])
-        self._console_write(f"Python {sys.version.split()[0]} - the variable 'editor' is this "
-                            "Notepad window.\n", "info")
-        self._console_prompt(">>> ")
 
     def _console_write(self, text, tag=None):
         self.console_text.insert("end", text, tag or ())
@@ -7113,23 +7163,6 @@ class Notepad:
         self.open_file(KEYBINDINGS_FILE)
         self.set_message('Use Tk key names, e.g. "<Control-Shift-K>". An empty list removes a '
                          "shortcut. Save to apply.")
-
-    def apply_ui_scale(self, save=True):
-        try:
-            scale = int(self.ui_scale.get()) / 100
-        except ValueError:
-            scale = 1.0
-        for name, base in self._base_fonts.items():
-            try:
-                tkfont.nametofont(name).configure(size=round(base * scale))
-            except tk.TclError:
-                pass
-        try:
-            self.style.configure("Treeview", rowheight=int(20 * scale))
-        except (AttributeError, tk.TclError):
-            pass
-        if save:
-            self.save_config()
 
     def settings_window(self):
         win = tk.Toplevel(self.root)
@@ -9938,6 +9971,767 @@ class Notepad:
         self.clear_output()
         self._out_append(out.decode("utf-8", errors="replace") or "Nothing to commit\n")
 
+    def apply_ttk_theme(self):
+        th = self.theme
+        st = self.style
+        try:
+            scale = int(self.ui_scale.get()) / 100
+        except ValueError:
+            scale = 1.0
+        for name, bg in (("Closable.TNotebook", th["tabbar_bg"]), ("Panel.TNotebook", th["bg"])):
+            st.configure(name, background=bg, borderwidth=0, tabmargins=(0, 0, 0, 0),
+                         lightcolor=bg, darkcolor=bg, bordercolor=th["border"])
+        st.configure("Closable.TNotebook.Tab", background=th["tab_inactive_bg"],
+                     foreground=th["tab_inactive_fg"], borderwidth=0, padding=(12, 6, 8, 6),
+                     lightcolor=th["tab_inactive_bg"], darkcolor=th["tab_inactive_bg"],
+                     bordercolor=th["border"], focuscolor=th["tab_inactive_bg"])
+        st.map("Closable.TNotebook.Tab",
+               background=[("selected", th["bg"]), ("active", th["tab_hover_bg"])],
+               foreground=[("selected", th["fg"])],
+               lightcolor=[("selected", th["bg"]), ("active", th["tab_hover_bg"])],
+               darkcolor=[("selected", th["bg"]), ("active", th["tab_hover_bg"])],
+               bordercolor=[("selected", th["border"])], expand=[("selected", (0, 0, 0, 0))])
+        st.configure("Panel.TNotebook.Tab", background=th["bg"], foreground=th["tab_inactive_fg"],
+                     borderwidth=0, padding=(12, 5, 12, 5), lightcolor=th["bg"],
+                     darkcolor=th["bg"], bordercolor=th["bg"], focuscolor=th["bg"],
+                     font=("TkDefaultFont", max(8, round(9 * scale))))
+        st.map("Panel.TNotebook.Tab", background=[("selected", th["bg"])],
+               foreground=[("selected", th["fg"])], lightcolor=[("selected", th["accent"])],
+               expand=[("selected", (0, 0, 0, 0))])
+        for prefix, trough in (("Editor", th["bg"]), ("Side", th["side_bg"])):
+            for orient in ("Vertical", "Horizontal"):
+                name = f"{prefix}.{orient}.TScrollbar"
+                st.configure(name, troughcolor=trough, background=th["scroll_thumb"],
+                             bordercolor=trough, lightcolor=th["scroll_thumb"],
+                             darkcolor=th["scroll_thumb"], arrowcolor=th["fg"], gripcount=0,
+                             arrowsize=max(10, round(12 * scale)), relief="flat")
+                st.map(name, background=[("active", th["scroll_thumb_hover"]),
+                                         ("pressed", th["scroll_thumb_hover"])],
+                       lightcolor=[("active", th["scroll_thumb_hover"])],
+                       darkcolor=[("active", th["scroll_thumb_hover"])])
+        st.configure("Side.Treeview", background=th["side_bg"], fieldbackground=th["side_bg"],
+                     foreground=th["side_fg"], borderwidth=0, relief="flat",
+                     rowheight=max(18, round(22 * scale)), indent=max(10, round(12 * scale)),
+                     lightcolor=th["side_bg"], darkcolor=th["side_bg"], bordercolor=th["side_bg"])
+        st.map("Side.Treeview", background=[("selected", th["list_sel"])],
+               foreground=[("selected", th["fg"])])
+        st.configure("Treeview", rowheight=max(18, round(20 * scale)))
+
+    def _build_activity_bar(self):
+        bar = tk.Frame(self.root, bd=0, width=48)
+        self.activity_bar = bar
+        self.activity_buttons = {}
+        for name, tip, func in (("files", "Explorer (Ctrl+Shift+E)", self.activity_explorer),
+                                ("search", "Find in Folder (Ctrl+Shift+F)", self.find_in_folder),
+                                ("outline", "Outline (Ctrl+Shift+J)", self.activity_outline),
+                                ("run", "Run File (Ctrl+R)", self.run_file)):
+            self._activity_button(bar, name, tip, func).pack(side="top", fill="x")
+        self._activity_button(bar, "settings", "Settings (Ctrl+,)",
+                              self.settings_window).pack(side="bottom", fill="x", pady=(0, 6))
+        bar.pack(side="left", fill="y")
+
+    def _activity_button(self, parent, name, tip, func):
+        holder = tk.Frame(parent, bd=0)
+        marker = tk.Frame(holder, width=2, bd=0)
+        marker.pack(side="left", fill="y")
+        label = tk.Label(holder, bd=0, padx=10, pady=10, cursor="hand2")
+        label.pack(side="left")
+        label.bind("<Button-1>", lambda e: func())
+        label.bind("<Enter>", lambda e: self._activity_hover(name, True))
+        label.bind("<Leave>", lambda e: self._activity_hover(name, False))
+        self._tooltip_for(label, tip)
+        self.activity_buttons[name] = (holder, marker, label)
+        return holder
+
+    def _tooltip_for(self, widget, text):
+        state = {"job": None, "win": None}
+
+        def show():
+            state["job"] = None
+            label_text = text() if callable(text) else text
+            if not label_text:
+                return
+            win = tk.Toplevel(self.root)
+            win.overrideredirect(True)
+            x = widget.winfo_rootx() + widget.winfo_width() + 4
+            y = widget.winfo_rooty() + widget.winfo_height() // 2 - 10
+            win.geometry(f"+{x}+{y}")
+            th = self.theme
+            tk.Label(win, text=label_text, bg=th["side_bg"], fg=th["fg"], bd=1, relief="solid",
+                     padx=6, pady=2).pack()
+            state["win"] = win
+
+        def enter(event):
+            state["job"] = widget.after(600, show)
+
+        def leave(event):
+            if state["job"]:
+                widget.after_cancel(state["job"])
+                state["job"] = None
+            if state["win"]:
+                state["win"].destroy()
+                state["win"] = None
+
+        widget.bind("<Enter>", enter, add="+")
+        widget.bind("<Leave>", leave, add="+")
+        widget.bind("<ButtonPress>", leave, add="+")
+
+    def _activity_hover(self, name, inside):
+        self._activity_hovered = name if inside else None
+        self.refresh_activity_bar()
+
+    def refresh_activity_bar(self):
+        th = self.theme
+        self.activity_bar.config(bg=th["activity_bg"])
+        view = self.side_view()
+        hovered = getattr(self, "_activity_hovered", None)
+        for name, (holder, marker, label) in self.activity_buttons.items():
+            active = (name == "files" and view == "explorer") or (name == "outline"
+                                                                    and view == "outline")
+            color = th["activity_active"] if active or hovered == name else th["activity_fg"]
+            label.config(image=draw_icon(self.root, 24, [(ICON_SHAPES[name], color)],
+                                         th["activity_bg"]), bg=th["activity_bg"])
+            holder.config(bg=th["activity_bg"])
+            marker.config(bg=th["activity_active"] if active else th["activity_bg"])
+
+    def activity_explorer(self):
+        self.set_side_view(None if self.side_view() == "explorer" else "explorer")
+
+    def activity_outline(self):
+        self.set_side_view(None if self.side_view() == "outline" else "outline")
+
+    def side_view(self):
+        if self.explorer_var.get():
+            return "explorer"
+        if self.outline_var.get():
+            return "outline"
+        return None
+
+    def set_side_view(self, view):
+        self.explorer_var.set(view == "explorer")
+        self.outline_var.set(view == "outline")
+        self.update_side_panel()
+
+    def _on_explorer_check(self):
+        self.set_side_view("explorer" if self.explorer_var.get() else None)
+
+    def _on_outline_check(self):
+        self.set_side_view("outline" if self.outline_var.get() else None)
+
+    def _side_button(self, parent, icon, tip, func):
+        label = tk.Label(parent, bd=0, padx=3, pady=3, cursor="hand2")
+        label.icon_name = icon
+        label.bind("<Button-1>", lambda e: func())
+        label.bind("<Enter>", lambda e: label.config(bg=self.theme["list_hover"]))
+        label.bind("<Leave>", lambda e: label.config(bg=self.theme["side_bg"]))
+        self._tooltip_for(label, tip)
+        label.pack(side="right", padx=1)
+        self.side_buttons.append(label)
+        return label
+
+    def _build_side_panel(self):
+        self.side_buttons = []
+        self.side_panel = tk.Frame(self.hpane, bd=0)
+        header = tk.Frame(self.side_panel, bd=0)
+        header.pack(fill="x")
+        self.side_header = header
+        self.side_title = tk.Label(header, text="EXPLORER", anchor="w", padx=12, pady=7,
+                                   font=("TkDefaultFont", 9, "bold"))
+        self.side_title.pack(side="left", fill="x", expand=True)
+        self._side_button(header, "close", "Close Side Bar", lambda: self.set_side_view(None))
+        self.explorer_actions = [
+            self._side_button(header, "collapse", "Collapse Folders", self.explorer_collapse_all),
+            self._side_button(header, "refresh", "Refresh Explorer", self.refresh_explorer),
+            self._side_button(header, "up", "Go Up One Folder", self.explorer_up),
+            self._side_button(header, "new_folder", "New Folder...",
+                              lambda: self.explorer_new(folder=True)),
+            self._side_button(header, "new_file", "New File...",
+                              lambda: self.explorer_new(folder=False)),
+        ]
+        self.outline_actions = [
+            self._side_button(header, "collapse", "Collapse All", self.outline_collapse_all),
+            self._side_button(header, "expand_all", "Expand All", self.outline_expand_all),
+        ]
+        self.side_body = tk.Frame(self.side_panel, bd=0)
+        self.side_body.pack(fill="both", expand=True)
+
+        ex = tk.Frame(self.side_body, bd=0)
+        self.explorer_root_label = tk.Label(ex, anchor="w", padx=8, pady=3, cursor="hand2",
+                                            font=("TkDefaultFont", 9, "bold"))
+        self.explorer_root_label.pack(fill="x")
+        self.explorer_root_label.bind("<Button-1>", lambda e: self.open_folder_explorer())
+        self._tooltip_for(self.explorer_root_label,
+                          lambda: f"{self.explorer_root}\n(click to open another folder)")
+        body = tk.Frame(ex, bd=0)
+        body.pack(fill="both", expand=True)
+        self.explorer = ttk.Treeview(body, show="tree", columns=("status",),
+                                     selectmode="browse", style="Side.Treeview")
+        self.explorer.column("#0", stretch=True, width=200)
+        self.explorer.column("status", width=24, stretch=False, anchor="center")
+        sb = ttk.Scrollbar(body, command=self.explorer.yview, style="Side.Vertical.TScrollbar")
+        self.explorer.config(yscrollcommand=lambda f, l: self._autohide(sb, self.explorer, f, l))
+        sb.pack(side="right", fill="y")
+        self.explorer.pack(side="left", fill="both", expand=True)
+        self.explorer.bind("<<TreeviewOpen>>", self._explorer_open_node)
+        self.explorer.bind("<ButtonRelease-1>", self._explorer_click)
+        self.explorer.bind("<Return>", self._explorer_activate)
+        self.explorer.bind("<Motion>", self._explorer_hover)
+        self.explorer.bind("<Leave>", lambda e: self._tree_hover(self.explorer, None))
+        self.explorer.bind("<Button-2>" if self.aqua else "<Button-3>", self._explorer_menu)
+        self.explorer_frame = ex
+        self.explorer_paths = {}
+
+        ol = tk.Frame(self.side_body, bd=0)
+        self.outline_doc_label = tk.Label(ol, anchor="w", padx=8, pady=3,
+                                          font=("TkDefaultFont", 9, "bold"))
+        self.outline_doc_label.pack(fill="x")
+        body2 = tk.Frame(ol, bd=0)
+        body2.pack(fill="both", expand=True)
+        self.outline = ttk.Treeview(body2, show="tree", selectmode="browse",
+                                    style="Side.Treeview")
+        sb2 = ttk.Scrollbar(body2, command=self.outline.yview, style="Side.Vertical.TScrollbar")
+        self.outline.config(yscrollcommand=lambda f, l: self._autohide(sb2, self.outline, f, l))
+        sb2.pack(side="right", fill="y")
+        self.outline.pack(side="left", fill="both", expand=True)
+        self.outline.bind("<ButtonRelease-1>", self._outline_select)
+        self.outline.bind("<Return>", self._outline_select)
+        self.outline.bind("<Motion>", lambda e: self._tree_hover(
+            self.outline, self.outline.identify_row(e.y)))
+        self.outline.bind("<Leave>", lambda e: self._tree_hover(self.outline, None))
+        self.outline_frame = ol
+        self.side_visible = False
+        self.side_current = None
+        self.explorer_root = self.cfg.get("explorer_root") or ""
+        self.git_status = {}
+        self.apply_side_theme()
+
+    @staticmethod
+    def _autohide(scrollbar, widget, first, last):
+        scrollbar.set(first, last)
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            if scrollbar.winfo_manager():
+                scrollbar.pack_forget()
+        elif not scrollbar.winfo_manager():
+            scrollbar.pack(side="right", fill="y", before=widget)
+
+    def apply_side_theme(self):
+        th = self.theme
+        bg = th["side_bg"]
+        for w in (self.side_panel, self.side_header, self.side_body, self.explorer_frame,
+                  self.outline_frame):
+            w.config(bg=bg)
+        for w in self.explorer_frame.winfo_children() + self.outline_frame.winfo_children():
+            if isinstance(w, tk.Frame):
+                w.config(bg=bg)
+        self.side_title.config(bg=bg, fg=th["side_header"])
+        for label in (self.explorer_root_label, self.outline_doc_label):
+            label.config(bg=bg, fg=th["side_fg"])
+        for button in self.side_buttons:
+            button.config(bg=bg, image=draw_icon(self.root, 16, [(ICON_SHAPES[button.icon_name],
+                                                                 th["side_header"])], bg))
+        for tree in (self.explorer, self.outline):
+            tree.tag_configure("hover", background=th["list_hover"])
+            tree.tag_configure("dim", foreground=th["side_header"])
+        self.explorer.tag_configure("git_mod", foreground=th["git_mod_fg"])
+        self.explorer.tag_configure("git_new", foreground=th["git_new_fg"])
+        self.explorer.tag_configure("git_del", foreground=th["git_del_fg"])
+        self.explorer.tag_configure("git_ign", foreground=th["git_ign_fg"])
+        self.hpane.config(bg=th["border"])
+        self.main_pane.config(bg=th["border"])
+        self.refresh_activity_bar()
+        if self.explorer.get_children():
+            self._explorer_reicon("")
+        if self.outline.get_children():
+            self.refresh_outline()
+
+    def update_side_panel(self, save=True):
+        view = self.side_view() if not self.zen else None
+        if view and self.side_current != view:
+            for frame in (self.explorer_frame, self.outline_frame):
+                frame.pack_forget()
+            frame = self.explorer_frame if view == "explorer" else self.outline_frame
+            frame.pack(fill="both", expand=True)
+            self.side_title.config(text=view.upper())
+            for button in self.side_buttons:
+                button.pack_forget()
+            self.side_buttons[0].pack(side="right", padx=(1, 6))
+            for button in (self.explorer_actions if view == "explorer" else self.outline_actions):
+                button.pack(side="right", padx=1)
+            self.side_current = view
+        if view and not self.side_visible:
+            width = int(self.cfg.get("side_width") or 250)
+            self.hpane.add(self.side_panel, before=self.main_pane, width=width, stretch="never")
+            self.side_visible = True
+        elif not view and self.side_visible:
+            try:
+                self.cfg["side_width"] = self.side_panel.winfo_width()
+            except tk.TclError:
+                pass
+            self.hpane.forget(self.side_panel)
+            self.side_visible = False
+            self.side_current = None
+        if view == "explorer":
+            if not self.explorer_root or not os.path.isdir(self.explorer_root):
+                doc = self.current()
+                self.explorer_root = (os.path.dirname(doc.path) if doc and doc.path
+                                      else os.path.expanduser("~"))
+            if not self.explorer.get_children():
+                self.refresh_explorer()
+            self.explorer_reveal(self.current())
+        elif view == "outline":
+            self.refresh_outline()
+        self.refresh_activity_bar()
+        if save:
+            self.save_config()
+
+    def set_explorer_root(self, folder):
+        self.explorer_root = os.path.abspath(folder)
+        self.cfg["explorer_root"] = self.explorer_root
+        self.explorer_var.set(True)
+        self.outline_var.set(False)
+        self.refresh_explorer()
+        self.update_side_panel()
+
+    def open_folder_explorer(self):
+        folder = filedialog.askdirectory(title="Open Folder",
+                                         initialdir=self.explorer_root or os.path.expanduser("~"))
+        if folder:
+            self.set_explorer_root(folder)
+
+    def explorer_up(self):
+        parent = os.path.dirname(self.explorer_root)
+        if parent and parent != self.explorer_root:
+            self.set_explorer_root(parent)
+
+    def explorer_collapse_all(self):
+        def collapse(node):
+            for child in self.explorer.get_children(node):
+                self.explorer.item(child, open=False)
+                collapse(child)
+        collapse("")
+
+    def outline_collapse_all(self):
+        for node in self.outline.get_children():
+            self.outline.item(node, open=False)
+
+    def outline_expand_all(self):
+        def expand(node):
+            for child in self.outline.get_children(node):
+                self.outline.item(child, open=True)
+                expand(child)
+        expand("")
+
+    def _file_image(self, name, is_dir=False, opened=False, up=False):
+        th = self.theme
+        if is_dir or up:
+            layers = folder_icon_layers(th["folder"], opened, up)
+        else:
+            layers = file_icon_layers(name)
+        return draw_icon(self.root, 16, layers, th["side_bg"])
+
+    def refresh_explorer(self):
+        tree = self.explorer
+        opened = {self.explorer_paths.get(n) for n in self._all_nodes(tree)
+                  if tree.item(n, "open")}
+        tree.delete(*tree.get_children())
+        self.explorer_paths = {}
+        root = self.explorer_root
+        if not root or not os.path.isdir(root):
+            root = self.explorer_root = os.path.expanduser("~")
+        self.explorer_root_label.config(text="∨  " + (os.path.basename(root) or root).upper())
+        self.load_git_status()
+        parent = os.path.dirname(root)
+        if parent and parent != root:
+            node = tree.insert("", "end", text="  ..", image=self._file_image("", up=True),
+                               tags=("dim",))
+            self.explorer_paths[node] = ".."
+        self._explorer_fill("", root)
+        for node in list(self._all_nodes(tree)):
+            if self.explorer_paths.get(node) in opened:
+                self._explorer_expand(node)
+
+    def _all_nodes(self, tree, parent=""):
+        for node in tree.get_children(parent):
+            yield node
+            yield from self._all_nodes(tree, node)
+
+    def load_git_status(self):
+        self.git_status = {}
+        root = self.explorer_root
+        top = git_run(["rev-parse", "--show-toplevel"], root)
+        if top is None:
+            return
+        top = top.decode("utf-8", errors="replace").strip()
+        out = git_run(["status", "--porcelain=v1", "-uall", "--ignored=matching"], root)
+        if out is None:
+            return
+        for line in out.decode("utf-8", errors="replace").splitlines():
+            if len(line) < 4:
+                continue
+            code, rel = line[:2], line[3:].split(" -> ")[-1].strip('"')
+            full = os.path.normcase(os.path.normpath(os.path.join(top, rel)))
+            if code == "!!":
+                status = "ign"
+            elif "?" in code or "A" in code:
+                status = "new"
+            elif "D" in code:
+                status = "del"
+            else:
+                status = "mod"
+            self.git_status[full] = status
+            if status != "ign":
+                folder = os.path.dirname(full)
+                while len(folder) >= len(os.path.normcase(top)) and folder not in ("", "/"):
+                    self.git_status.setdefault(folder, "dirty" if status != "new" else "dirty_new")
+                    nxt = os.path.dirname(folder)
+                    if nxt == folder:
+                        break
+                    folder = nxt
+
+    def _git_decor(self, path):
+        key = os.path.normcase(os.path.normpath(path))
+        status = self.git_status.get(key)
+        if status is None:
+            for ignored, value in self.git_status.items():
+                if value == "ign" and key.startswith(ignored.rstrip("/\\") + os.sep):
+                    return ("git_ign",), ""
+            return (), ""
+        return {"mod": (("git_mod",), "M"), "new": (("git_new",), "U"),
+                "del": (("git_del",), "D"), "ign": (("git_ign",), ""),
+                "dirty": (("git_mod",), "•"), "dirty_new": (("git_new",), "•")}[status]
+
+    def _explorer_fill(self, parent, folder):
+        try:
+            entries = sorted(os.scandir(folder), key=lambda e: (not e.is_dir(), e.name.lower()))
+        except OSError:
+            return
+        for entry in entries:
+            if entry.is_dir() and entry.name in (".git", ".hg", ".svn", "__pycache__"):
+                continue
+            is_dir = entry.is_dir()
+            tags, mark = self._git_decor(entry.path)
+            node = self.explorer.insert(parent, "end", text="  " + entry.name,
+                                        image=self._file_image(entry.name, is_dir),
+                                        values=(mark,), tags=tags)
+            self.explorer_paths[node] = entry.path
+            if is_dir:
+                self.explorer.insert(node, "end", text="", tags=("placeholder",))
+
+    def _explorer_reicon(self, parent):
+        for node in self.explorer.get_children(parent):
+            path = self.explorer_paths.get(node)
+            if not path:
+                continue
+            if path == "..":
+                self.explorer.item(node, image=self._file_image("", up=True))
+                continue
+            is_dir = os.path.isdir(path)
+            opened = bool(self.explorer.item(node, "open"))
+            self.explorer.item(node, image=self._file_image(os.path.basename(path), is_dir,
+                                                            opened))
+            self._explorer_reicon(node)
+
+    def _explorer_expand(self, node):
+        children = self.explorer.get_children(node)
+        if len(children) == 1 and "placeholder" in self.explorer.item(children[0], "tags"):
+            self.explorer.delete(children[0])
+            self._explorer_fill(node, self.explorer_paths[node])
+        self.explorer.item(node, open=True)
+        path = self.explorer_paths.get(node)
+        if path:
+            self.explorer.item(node, image=self._file_image(os.path.basename(path), True, True))
+
+    def _explorer_open_node(self, event=None):
+        node = self.explorer.focus()
+        if node and node in self.explorer_paths and os.path.isdir(self.explorer_paths[node]):
+            self._explorer_expand(node)
+
+    def _explorer_click(self, event):
+        tree = self.explorer
+        node = tree.identify_row(event.y)
+        if not node:
+            return
+        path = self.explorer_paths.get(node)
+        if path == "..":
+            self.explorer_up()
+            return
+        if not path:
+            return
+        if "indicator" in tree.identify_element(event.x, event.y):
+            if tree.item(node, "open"):
+                self._explorer_expand(node)
+            else:
+                tree.item(node, image=self._file_image(os.path.basename(path), True, False))
+            return
+        if os.path.isdir(path):
+            if tree.item(node, "open"):
+                tree.item(node, open=False)
+                tree.item(node, image=self._file_image(os.path.basename(path), True, False))
+            else:
+                self._explorer_expand(node)
+        elif os.path.isfile(path):
+            self.open_file(path)
+
+    def _explorer_activate(self, event=None):
+        node = self.explorer.focus()
+        path = self.explorer_paths.get(node)
+        if path == "..":
+            self.explorer_up()
+        elif path and os.path.isdir(path):
+            if self.explorer.item(node, "open"):
+                self.explorer.item(node, open=False)
+            else:
+                self._explorer_expand(node)
+        elif path and os.path.isfile(path):
+            self.open_file(path)
+        return "break"
+
+    def _tree_hover(self, tree, node):
+        previous = getattr(tree, "_hover_node", None)
+        if previous == node:
+            return
+        if previous and tree.exists(previous):
+            tags = [t for t in tree.item(previous, "tags") if t != "hover"]
+            tree.item(previous, tags=tags)
+        if node:
+            tree.item(node, tags=list(tree.item(node, "tags")) + ["hover"])
+        tree._hover_node = node
+
+    def _explorer_hover(self, event):
+        self._tree_hover(self.explorer, self.explorer.identify_row(event.y) or None)
+
+    def explorer_reveal(self, doc):
+        if not doc or not doc.path or self.side_view() != "explorer":
+            return
+        root = os.path.normcase(os.path.abspath(self.explorer_root))
+        target = os.path.normcase(os.path.abspath(doc.path))
+        if not target.startswith(root.rstrip(os.sep) + os.sep):
+            return
+        parts = os.path.relpath(doc.path, self.explorer_root).split(os.sep)
+        parent = ""
+        path = self.explorer_root
+        node = None
+        for i, part in enumerate(parts):
+            path = os.path.join(path, part)
+            node = next((n for n in self.explorer.get_children(parent)
+                         if os.path.normcase(self.explorer_paths.get(n, "")) ==
+                         os.path.normcase(path)), None)
+            if node is None:
+                return
+            if i < len(parts) - 1:
+                self._explorer_expand(node)
+            parent = node
+        if node:
+            self.explorer.selection_set(node)
+            self.explorer.focus(node)
+            self.explorer.see(node)
+
+    def _explorer_target_folder(self):
+        node = self.explorer.focus()
+        path = self.explorer_paths.get(node)
+        if path and path != ".." and os.path.isdir(path):
+            return path
+        if path and path != ".." and os.path.isfile(path):
+            return os.path.dirname(path)
+        return self.explorer_root
+
+    def explorer_new(self, folder=False, base=None):
+        base = base or self._explorer_target_folder()
+        name = simpledialog.askstring("New Folder" if folder else "New File",
+                                      f"Name (inside {os.path.basename(base) or base}):",
+                                      parent=self.root)
+        if not name:
+            return None
+        target = os.path.join(base, name)
+        if os.path.exists(target):
+            messagebox.showerror(APP, f"{name} already exists.")
+            return None
+        try:
+            if folder:
+                os.makedirs(target)
+            else:
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with open(target, "w", encoding="utf-8"):
+                    pass
+        except OSError as e:
+            messagebox.showerror(APP, str(e))
+            return None
+        self.refresh_explorer()
+        if not folder:
+            doc = self.open_file(target)
+            self.explorer_reveal(doc)
+        return target
+
+    def _explorer_menu(self, event):
+        node = self.explorer.identify_row(event.y)
+        path = self.explorer_paths.get(node) if node else None
+        if path == "..":
+            return
+        if node:
+            self.explorer.selection_set(node)
+            self.explorer.focus(node)
+        m = tk.Menu(self.root, tearoff=0)
+        folder = path if path and os.path.isdir(path) else (
+            os.path.dirname(path) if path else self.explorer_root)
+        if path and os.path.isfile(path):
+            m.add_command(label="Open", command=lambda: self.open_file(path))
+            m.add_command(label="Open in New Window", command=lambda: subprocess.Popen(
+                [sys.executable, SCRIPT_PATH, "--new-window", path]))
+            m.add_separator()
+        m.add_command(label="New File...", command=lambda: self.explorer_new(False, folder))
+        m.add_command(label="New Folder...", command=lambda: self.explorer_new(True, folder))
+        if path:
+            m.add_separator()
+            m.add_command(label="Rename...", command=lambda: self.explorer_rename(path))
+            m.add_command(label="Delete", command=lambda: self.explorer_delete(path))
+            m.add_separator()
+            m.add_command(label="Copy Path", command=lambda: self._copy(path))
+            m.add_command(label="Copy Relative Path", command=lambda: self._copy(
+                os.path.relpath(path, self.explorer_root)))
+            m.add_command(label="Reveal in File Manager",
+                          command=lambda: reveal_in_file_manager(path))
+            if os.path.isdir(path):
+                m.add_command(label="Open Folder Here", command=lambda: self.set_explorer_root(path))
+                m.add_command(label="Find in Folder...", command=lambda: self._fif_in(path))
+        m.add_separator()
+        m.add_command(label="Refresh", command=self.refresh_explorer)
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
+
+    def _fif_in(self, folder):
+        self.find_in_folder()
+        self.fif_folder.set(folder)
+
+    def explorer_rename(self, path):
+        old = os.path.basename(path)
+        new = simpledialog.askstring("Rename", "New name:", initialvalue=old, parent=self.root)
+        if not new or new == old:
+            return
+        target = os.path.join(os.path.dirname(path), new)
+        if os.path.exists(target):
+            messagebox.showerror(APP, f"{new} already exists.")
+            return
+        try:
+            os.rename(path, target)
+        except OSError as e:
+            messagebox.showerror(APP, str(e))
+            return
+        for doc in self.docs.values():
+            if doc.path and os.path.normcase(doc.path).startswith(os.path.normcase(path)):
+                doc.path = target + doc.path[len(path):]
+                doc.mtime = os.path.getmtime(doc.path) if os.path.exists(doc.path) else None
+                doc.setup_language()
+                self.update_tab(doc)
+        self.refresh_explorer()
+
+    def explorer_delete(self, path):
+        name = os.path.basename(path)
+        if os.path.isdir(path):
+            try:
+                empty = not os.listdir(path)
+            except OSError:
+                empty = False
+            if not empty:
+                messagebox.showinfo(APP, f"'{name}' is not empty. To protect your files, delete "
+                                         "non-empty folders from your file manager.")
+                return
+        if not messagebox.askyesno(APP, f"Delete '{name}' permanently?\n\nThis cannot be "
+                                        "undone."):
+            return
+        doc = self._find_open(path)
+        try:
+            if os.path.isdir(path):
+                os.rmdir(path)
+            else:
+                os.remove(path)
+        except OSError as e:
+            messagebox.showerror(APP, str(e))
+            return
+        if doc:
+            doc.mtime = None
+            doc.text.edit_modified(True)
+            self.update_tab(doc)
+        self.refresh_explorer()
+
+    def refresh_outline(self):
+        if not hasattr(self, "outline") or self.side_view() != "outline":
+            return
+        doc = self.current()
+        tree = self.outline
+        tree.delete(*tree.get_children())
+        tree._hover_node = None
+        self.outline_doc_label.config(text=(doc.name().upper() if doc else ""))
+        if not doc or doc.kind != "text":
+            return
+        stack = [("", -1)]
+        bg = self.theme["side_bg"]
+        if not doc.symbols:
+            tree.insert("", "end", text="  No symbols found in this document", tags=("dim",))
+        for sym in doc.symbols:
+            while stack and stack[-1][1] >= sym["depth"]:
+                stack.pop()
+            parent = stack[-1][0] if stack else ""
+            image = draw_icon(self.root, 16, symbol_icon_layers(sym["kind"]), bg)
+            node = tree.insert(parent, "end", text="  " + sym["name"], image=image,
+                               values=(sym["line"],), open=True)
+            stack.append((node, sym["depth"]))
+
+    def _outline_select(self, event=None):
+        tree = self.outline
+        if event is not None and event.type == tk.EventType.ButtonRelease:
+            node = tree.identify_row(event.y)
+            if not node or "indicator" in tree.identify_element(event.x, event.y):
+                return
+        else:
+            node = tree.focus()
+        doc = self.current()
+        if node and doc and self.outline.item(node, "values"):
+            line = int(self.outline.item(node, "values")[0])
+            self._goto(doc, line)
+            doc.view().focus_set()
+
+    def _build_console(self):
+        f = tk.Frame(self.bottom_nb, bd=0)
+        self.console_text = tk.Text(f, height=10, font=self.font, wrap="char", bd=0,
+                                    highlightthickness=0, padx=10, pady=4, undo=False)
+        sb = ttk.Scrollbar(f, command=self.console_text.yview,
+                           style="Editor.Vertical.TScrollbar")
+        self.console_text.config(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.console_text.pack(side="left", fill="both", expand=True)
+        self.console_frame = f
+        self.bottom_nb.add(f, text="PYTHON CONSOLE")
+        self.console = code.InteractiveConsole({"editor": self, "__name__": "__console__"})
+        self.console_history = []
+        self.console_hpos = 0
+        c = self.console_text
+        c.bind("<Return>", self._console_enter)
+        c.bind("<KP_Enter>", self._console_enter)
+        c.bind("<Up>", lambda e: self._console_history(-1))
+        c.bind("<Down>", lambda e: self._console_history(1))
+        c.bind("<BackSpace>", self._console_backspace)
+        c.bind("<Key>", self._console_key, add="+")
+        c.bind("<Home>", lambda e: (c.mark_set("insert", "console_input"), "break")[1])
+        self._console_write(f"Python {sys.version.split()[0]} - the variable 'editor' is this "
+                            "Notepad window.\n", "info")
+        self._console_prompt(">>> ")
+
+    def apply_ui_scale(self, save=True):
+        try:
+            scale = int(self.ui_scale.get()) / 100
+        except ValueError:
+            scale = 1.0
+        for name, base in self._base_fonts.items():
+            try:
+                tkfont.nametofont(name).configure(size=round(base * scale))
+            except tk.TclError:
+                pass
+        self.apply_ttk_theme()
+        if save:
+            self.save_config()
+
 
 def run_self_test():
     import types
@@ -10387,11 +11181,24 @@ def run_self_test():
         app.explorer_var.set(True)
         app.set_explorer_root(work)
         pump()
-        names = [app.explorer.item(n, "text") for n in app.explorer.get_children()]
-        check("explorer lists files", "a.py" in names, names)
-        app.outline_var.set(True)
+        names = [app.explorer.item(n, "text").strip() for n in app.explorer.get_children()]
+        check("explorer lists files", "a.py" in names and names[0] == "..", names)
+        check("explorer file icons", app.explorer.item(app.explorer.get_children()[1], "image"))
+        app._explorer_click(types.SimpleNamespace(y=app.explorer.bbox(
+            app.explorer.get_children()[0])[1] + 2, x=40))
+        check("explorer .. goes up", os.path.normcase(app.explorer_root) ==
+              os.path.normcase(os.path.dirname(work)))
+        app.set_explorer_root(work)
+        answers["string"].append("made.txt")
+        app.explorer_new(folder=False, base=work)
+        check("explorer new file", os.path.exists(os.path.join(work, "made.txt"))
+              and app.current().path.endswith("made.txt"))
+        app.set_side_view(None)
+        check("side bar close button", not app.side_visible)
+        app.activity_explorer()
+        check("activity bar opens explorer", app.side_visible and app.side_view() == "explorer")
         app.open_file(py)
-        app.update_side_panel()
+        app.set_side_view("outline")
         pump()
         check("outline panel", len(app.outline.get_children()) >= 1)
         app.explorer_var.set(False)
