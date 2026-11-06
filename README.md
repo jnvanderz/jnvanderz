@@ -1,3 +1,5 @@
+wouldn't it be nice if we could run python apps without installing them? like... just click on them as if they were sort of a website?
+
 ## Notepad 
 [notepad.py](https://jnvanderz.github.io/notepad.py)
 ```bash
