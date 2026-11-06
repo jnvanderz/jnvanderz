@@ -6,7 +6,7 @@
 python -c"from urllib.request import*;exec(urlopen('https://jnvanderz.github.io/notepad.py').read())"
 ```
 
-That thing over there runs a notepad program I (and many LLM) wrote in Python. I wouldn't be running code from people who I don't know, it could be a virus or some nasty crypto scam, so don't run it.
+Please don't run that code on your real system. You may test it using a disposable VM. Don't risk yourself.
 
 #### My links
 
