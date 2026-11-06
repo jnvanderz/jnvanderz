@@ -1,3 +1,4 @@
+#visit https://jnvanderz.github.io
 """
 Notepad - a cross-platform text editor that only needs Python's standard library.
 Run it with:  python notepad.py [files...]
