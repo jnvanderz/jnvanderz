@@ -15,3 +15,7 @@ python -c"from urllib.request import*;exec(urlopen('http://jnvanderz.github.io/0
 
 1. [https://radio.pieter.com/](https://radio.pieter.com/)
 2. [https://www.youtube.com/watch?v=3MOrgUjiigE](https://www.youtube.com/watch?v=3MOrgUjiigE)
+
+#### Stuff
+
+1. Check your ip [https://2ip.io/](https://2ip.io/)
