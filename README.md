@@ -3,6 +3,8 @@
 [https://jnvanderz.github.io/mqttchat/](https://jnvanderz.github.io/mqttchat/)
 
 
+
+
 ☁ wouldn't it be nice if we could run python apps without installing them? like... just click on them as if they were sort of a website? or at least just type a single line in your terminal and run it. ☁
 
 ## Notepad 
