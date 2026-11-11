@@ -17,7 +17,7 @@ If we could only figure out how to run them without risking the rest of the syst
 
 #### My links
 
-1. Website [https://jnvanderz.github.io](https://jnvanderz.github.io)
+1. Website [https://jvad.neocities.org/](https://jvad.neocities.org/)
 2. Github [https://github.com/jnvanderz](https://github.com/jnvanderz)
 3. Twitter [https://x.com/jnvanderz](https://x.com/jnvanderz)
 4. Reddit [https://www.reddit.com/user/jnvanderz/](https://www.reddit.com/user/jnvanderz/)
