@@ -2,7 +2,7 @@
 
 1. [trollbox clone](https://jnvanderz.github.io/ghv.html?jnvanderz/demos/mqttchat.html)
 
-2. [Base67 converter](https://jnvanderz.github.io/ghv.html?jnvanderz/base67@main/poc/demo100.html)
+2. [Base67 converter](https://jnvanderz.github.io/ghv.html?base67/poc/demo100.html)
 
 3. [Directory listing of jnvanderz.github.io](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz.github.io@main/)
 
