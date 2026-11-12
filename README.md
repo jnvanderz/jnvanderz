@@ -4,7 +4,7 @@
 
 2. [Directory listing of jnvanderz](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@HEAD/)
 
-3. [Base67 converter](https://jnvanderz.github.io/public/demo0100.html)
+3. [Base67 converter](https://jnvanderz.github.io/ghv.html?jnvanderz/base67@HEAD/poc/demo100.html)
 
 4. [trollbox clone](https://jnvanderz.github.io/mqttchat/)
 
