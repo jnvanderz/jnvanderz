@@ -1,6 +1,6 @@
 ## Demos
 
-1. [Explore this site](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz.github.io@HEAD/)
+1. [Explore this repo](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz.github.io@HEAD/)
 
 2. [Base67 converter](https://jnvanderz.github.io/public/demo0100.html)
 
