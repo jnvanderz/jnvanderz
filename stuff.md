@@ -72,6 +72,30 @@ Example:
 
 ### Quick summary
 
+---
+
+## 2026-11-11 · httpbin as a real server for testing
+
+**Tags:** `http` `testing` `base64` `httpbin`
+
+**What I learned:** httpbin.org is a free service for HTTP testing. It has a route that decodes base64 straight from the URL, so it works as a real server for that kind of test.
+
+**How to use it:**
+
+```
+https://httpbin.org/base64/SGVsbG8gV29ybGQh
+```
+
+It returns the decoded content (here, `Hello World!`).
+
+**Notes / watch out for:**
+
+- Not verified: I could not open it to confirm the response.
+- As far as I know, it returns text/HTML rather than generic binary, so it is useful for text tests more than for real files.
+
+**Links:** <https://httpbin.org/>
+
+
 ```text
 GitHub → https://cdn.jsdelivr.net/gh/USER/REPO@VERSION/PATH
 NPM    → https://unpkg.com/PACKAGE@VERSION/PATH
