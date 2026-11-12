@@ -1,6 +1,6 @@
 ## Demos
 
-1. [trollbox clone](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@main/demos/mqttchat.html)
+1. [trollbox clone](https://jnvanderz.github.io/ghv.html?jnvanderz/demos/mqttchat.html)
 
 2. [Base67 converter](https://jnvanderz.github.io/ghv.html?jnvanderz/base67@main/poc/demo100.html)
 
