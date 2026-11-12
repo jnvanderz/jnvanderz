@@ -1,12 +1,12 @@
 ## Demos
 
-1. <a href="https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz.github.io@HEAD/" target="_blank" rel="noopener noreferrer">Directory listing of jnvanderz.github.io</a>
+1. [Directory listing of jnvanderz.github.io](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz.github.io@HEAD/)
 
-2. <a href="https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@HEAD/" target="_blank" rel="noopener noreferrer">Directory listing of jnvanderz</a>
+2. [Directory listing of jnvanderz](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@HEAD/)
 
-3. <a href="https://jnvanderz.github.io/public/demo0100.html" target="_blank" rel="noopener noreferrer">Base67 converter</a>
+3. [Base67 converter](https://jnvanderz.github.io/public/demo0100.html)
 
-4. <a href="https://jnvanderz.github.io/mqttchat/" target="_blank" rel="noopener noreferrer">trollbox clone</a>
+4. [trollbox clone](https://jnvanderz.github.io/mqttchat/)
 
 ---
 
