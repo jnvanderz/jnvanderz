@@ -1,12 +1,12 @@
 ## Demos
 
-1. [Directory listing of jnvanderz.github.io](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz.github.io@HEAD/)
+1. [Directory listing of jnvanderz.github.io](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz.github.io@main/)
 
-2. [Directory listing of jnvanderz](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@HEAD/)
+2. [Directory listing of jnvanderz](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@main/)
 
-3. [Base67 converter](https://jnvanderz.github.io/ghv.html?jnvanderz/base67@HEAD/poc/demo100.html)
+3. [Base67 converter](https://jnvanderz.github.io/ghv.html?jnvanderz/base67@main/poc/demo100.html)
 
-4. [trollbox clone](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@HEAD/demos/mqttchat.html)
+4. [trollbox clone](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@main/demos/mqttchat.html)
 
 ---
 
