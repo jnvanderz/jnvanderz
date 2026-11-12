@@ -6,7 +6,7 @@
 
 3. [Base67 converter](https://jnvanderz.github.io/ghv.html?jnvanderz/base67@HEAD/poc/demo100.html)
 
-4. [trollbox clone](https://jnvanderz.github.io/mqttchat/)
+4. [trollbox clone](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@HEAD/demos/mqttchat.html)
 
 ---
 
