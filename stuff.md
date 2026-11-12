@@ -100,3 +100,29 @@ It returns the decoded content (here, `Hello World!`).
 - As far as I know, it returns text/HTML rather than generic binary, so it is useful for text tests more than for real files.
 
 **Links:** <https://httpbin.org/>
+
+---
+
+## 2026-11-11 · httpbingo: base64 route with a content type
+
+**Tags:** `http` `testing` `base64` `httpbingo` `go`
+
+**What I learned:** httpbingo.org is a Go reimplementation of httpbin. Its `/base64/:value` route accepts an optional `content-type` parameter, which tells the browser how to treat the decoded data (for example, as an image).
+
+**How to use it:** this URL is a 1×1 pixel PNG:
+
+```
+https://httpbingo.org/base64/iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk-M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==?content-type=image/png
+```
+
+**Notes / watch out for:**
+
+- Not tested, and it may not work as is. Controlling the `Content-Type` from the URL appears in a security advisory against go-httpbin (it allowed XSS), so current versions may limit which types they accept.
+- URL-safe base64: `+` and `/` have their own meaning in a URL, so they must be replaced with `-` and `_` (in the example above, one `+` was already replaced). This is the problem my Base67 avoids by design.
+- Size: servers usually cut URLs off after a few kilobytes. Fine for an icon, not for a photo.
+- No guarantees: these are third-party test services that can go down, change or limit usage. Don't rely on them for anything that must keep working.
+
+**Links:**
+
+- <https://hbin.apps-isd.sd.gov.bc.ca/>
+- <https://advisories.gitlab.com/pkg/golang/github.com/mccutchen/go-httpbin/v2/>
