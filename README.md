@@ -2,7 +2,9 @@
 
 1. [Directory listing of jnvanderz.github.io](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz.github.io@HEAD/)
 
-2. [Base67 converter](https://jnvanderz.github.io/public/demo0100.html)
+2. [Directory listing of jnvanderz](https://jnvanderz.github.io/ghv.html?jnvanderz/jnvanderz@HEAD/)
+
+3. [Base67 converter](https://jnvanderz.github.io/public/demo0100.html)
 
 ## trollbox clone
 
