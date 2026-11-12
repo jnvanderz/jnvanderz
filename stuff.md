@@ -72,6 +72,12 @@ Example:
 
 ### Quick summary
 
+```text
+GitHub → https://cdn.jsdelivr.net/gh/USER/REPO@VERSION/PATH
+NPM    → https://unpkg.com/PACKAGE@VERSION/PATH
+NPM    → https://cdn.jsdelivr.net/npm/PACKAGE@VERSION/PATH   (alternative)
+```
+
 ---
 
 ## 2026-11-11 · httpbin as a real server for testing
@@ -94,10 +100,3 @@ It returns the decoded content (here, `Hello World!`).
 - As far as I know, it returns text/HTML rather than generic binary, so it is useful for text tests more than for real files.
 
 **Links:** <https://httpbin.org/>
-
-
-```text
-GitHub → https://cdn.jsdelivr.net/gh/USER/REPO@VERSION/PATH
-NPM    → https://unpkg.com/PACKAGE@VERSION/PATH
-NPM    → https://cdn.jsdelivr.net/npm/PACKAGE@VERSION/PATH   (alternative)
-```
