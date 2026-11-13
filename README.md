@@ -4,11 +4,6 @@
 
 2. [Base67 converter](https://jnvanderz.github.io/g?base67/poc/demo100.html)
 
-3. [Directory listing of jnvanderz.github.io](https://jnvanderz.github.io/g?jnvanderz/jnvanderz.github.io@main/)
-
-4. [Directory listing of jnvanderz](https://jnvanderz.github.io/g?jnvanderz/jnvanderz@main/)
-
-
 ---
 
 ☁ wouldn't it be nice if we could run python apps without installing them? like... just click on them as if they were sort of a website? or at least just type a single line in your terminal and run it. ☁
