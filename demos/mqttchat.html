@@ -34,6 +34,15 @@
           white-space: pre-wrap; word-break: break-word; }
   .body a { color: var(--link); text-decoration: underline; }
   .body a:hover { color: var(--hi); }
+  .imgs { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px 0; }
+  .imgs a { display: block; line-height: 0; }
+  .imgs img, .imgs video { display: block; max-width: min(100%, 320px); max-height: 240px;
+              border: 1px solid var(--line); background: #1e1f1a; }
+  .imgs audio { display: block; width: min(100%, 320px); height: 32px; }
+  .legend { padding: 3px 6px; border-bottom: 1px solid var(--line); color: var(--dim);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend a { color: var(--link); }
+  .legend a:hover { color: var(--hi); }
   .msg.note .body { opacity: 0.7; }
   .msg.note.err .body { opacity: 1; color: var(--warn); }
   .msg.note.invite .body { opacity: 1; color: var(--discord); }
@@ -108,6 +117,9 @@
 </head>
 <body>
 <div class="app">
+  <div class="legend" title="Images, videos and audio from imglink.cc are played right here in the chat.">
+    Images, videos, audio or links from <a href="https://imglink.cc" target="_blank" rel="noopener noreferrer">https://imglink.cc</a> will be rendered right here in the chat. Upload yours and paste the link!
+  </div>
   <div class="main">
     <div id="log" aria-live="polite">
     </div>
@@ -231,8 +243,67 @@ const pad = n => String(n).padStart(2, "0");
 const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
 const TRAILING = /[.,;:!?)\]}>'"]+$/;
 
+const IMGLINK_HOSTS = new Set(["imglink.cc", "www.imglink.cc"]);
+const MAX_MEDIA = 4;
+const MEDIA_TYPES = {
+  image: /\.(?:png|jpe?g|jfif|gif|webp|svg|avif|bmp|ico|apng)$/i,
+  video: /\.(?:mp4|m4v|webm|mov|ogv|mkv)$/i,
+  audio: /\.(?:mp3|wav|ogg|oga|opus|m4a|aac|flac|weba)$/i,
+};
+
+function imglinkMedia(href) {
+  let u;
+  try { u = new URL(href); } catch (e) { return null; }
+  if (!IMGLINK_HOSTS.has(u.hostname.toLowerCase())) return null;
+  const path = u.pathname;
+  if (/^\/cdn\/[A-Za-z0-9_\-\/]+\.[A-Za-z0-9]+$/.test(path)) {
+    const src = "https://imglink.cc" + path;
+    for (const kind in MEDIA_TYPES) {
+      if (MEDIA_TYPES[kind].test(path)) return { kind, src, href: src };
+    }
+    return null;
+  }
+  const viewer = path.match(/^\/i\/([A-Za-z0-9_-]+)\/?$/);
+  if (viewer) {
+    return { kind: "image", src: "https://imglink.cc/cdn/medium/" + viewer[1] + ".webp",
+             href: "https://imglink.cc/i/" + viewer[1] };
+  }
+  return null;
+}
+
+function stickOnResize(el) {
+  const log = $("log");
+  if (log.scrollHeight - log.scrollTop - log.clientHeight < 60 + el.clientHeight) {
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+function mediaElement({ kind, src, href }) {
+  if (kind === "image") {
+    const a = document.createElement("a");
+    a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer nofollow";
+    const im = document.createElement("img");
+    im.src = src; im.alt = "image from imglink.cc"; im.loading = "lazy";
+    im.referrerPolicy = "no-referrer";
+    im.addEventListener("error", () => a.remove());
+    im.addEventListener("load", () => stickOnResize(im));
+    a.append(im);
+    return a;
+  }
+  const m = document.createElement(kind);
+  m.controls = true;
+  m.preload = "metadata";
+  m.src = src;
+  if (kind === "video") m.playsInline = true;
+  m.setAttribute("referrerpolicy", "no-referrer");
+  m.addEventListener("error", () => m.remove());
+  m.addEventListener(kind === "video" ? "loadedmetadata" : "loadeddata", () => stickOnResize(m));
+  return m;
+}
+
 function linkify(el, text) {
   el.textContent = "";
+  const media = [];
   let last = 0;
   for (const match of text.matchAll(URL_RE)) {
     let url = match[0];
@@ -254,12 +325,19 @@ function linkify(el, text) {
       a.rel = "noopener noreferrer nofollow";
       a.textContent = url;
       el.append(a);
+      const item = imglinkMedia(safe);
+      if (item && media.length < MAX_MEDIA && !media.some(i => i.src === item.src)) media.push(item);
     } else {
       el.append(url);
     }
     last = start + url.length;
   }
   if (last < text.length) el.append(text.slice(last));
+  if (media.length) {
+    const box = document.createElement("div"); box.className = "imgs";
+    for (const item of media) box.append(mediaElement(item));
+    el.append(box);
+  }
 }
 
 function row(t, idText, nickText, bodyText) {
