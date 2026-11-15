@@ -26,8 +26,9 @@ If we could only figure out how to run them without risking the rest of the syst
 
 #### Not mine
 
-1. [https://radio.pieter.com/](https://radio.pieter.com/)
-2. [https://www.youtube.com/watch?v=3MOrgUjiigE](https://www.youtube.com/watch?v=3MOrgUjiigE)
+3. [https://www.youtube.com/watch?v=WpaGUf21KRo](https://www.youtube.com/watch?v=WpaGUf21KRo)
+2. [https://radio.pieter.com/](https://radio.pieter.com/)
+1. [https://www.youtube.com/watch?v=3MOrgUjiigE](https://www.youtube.com/watch?v=3MOrgUjiigE)
 
 #### Stuff
 
