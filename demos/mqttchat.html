@@ -127,7 +127,7 @@
 <div class="app">
   <div class="legend" id="legend">
     <span class="ltext" title="Images, videos and audio from imglink.cc are played right here in the chat.">Images, videos, audio or links from <a href="https://imglink.cc" target="_blank" rel="noopener noreferrer">https://imglink.cc</a> will be rendered right here in the chat. Upload yours and paste the link!</span>
-    <label title="Turn off to stop loading imglink.cc images, videos and audio in the chat"><input type="checkbox" id="mediatoggle" checked> show imglink.cc media</label>
+    <label title="Turn off to stop loading imglink.cc and Discord images, videos and audio in the chat (YouTube is not affected)"><input type="checkbox" id="mediatoggle" checked> show media</label>
   </div>
   <div class="main">
     <div id="log" aria-live="polite">
@@ -311,23 +311,39 @@ function youtubeMedia(href) {
   return { kind: "youtube", src, href };
 }
 
-let showImglink = true;
+let showMedia = true;
 
 function fillSlot(slot) {
   slot.textContent = "";
-  if (showImglink) slot.append(mediaElement(slot._item));
+  if (showMedia) slot.append(mediaElement(slot._item));
 }
 
-function setShowImglink(on) {
-  showImglink = on;
-  store.set("mqttchat.showImglink", on ? "1" : "0");
+function setShowMedia(on) {
+  showMedia = on;
+  store.set("mqttchat.showMedia", on ? "1" : "0");
   $("mediatoggle").checked = on;
   $("legend").classList.toggle("off", !on);
   for (const slot of document.querySelectorAll("#log .slot")) fillSlot(slot);
   if (on) $("log").scrollTop = $("log").scrollHeight;
 }
 
-const mediaFor = href => youtubeMedia(href) || imglinkMedia(href);
+const DISCORD_HOSTS = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
+
+function discordMedia(href) {
+  let u;
+  try { u = new URL(href); } catch (e) { return null; }
+  if (u.protocol !== "https:" || !DISCORD_HOSTS.has(u.hostname.toLowerCase())) return null;
+  if (!/^\/(?:ephemeral-)?attachments\/\d+\/\d+\/[^\/]+$/.test(u.pathname)) return null;
+  for (const kind in MEDIA_TYPES) {
+    if (!MEDIA_TYPES[kind].test(u.pathname)) continue;
+    const src = kind === "image" ? u.href
+      : "https://cdn.discordapp.com" + u.pathname + u.search;
+    return { kind, src, href: u.href };
+  }
+  return null;
+}
+
+const mediaFor = href => youtubeMedia(href) || imglinkMedia(href) || discordMedia(href);
 
 function stickOnResize(el) {
   const log = $("log");
@@ -352,7 +368,7 @@ function mediaElement({ kind, src, href }) {
     const a = document.createElement("a");
     a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer nofollow";
     const im = document.createElement("img");
-    im.src = src; im.alt = "image from imglink.cc"; im.loading = "lazy";
+    im.src = src; im.alt = "shared image"; im.loading = "lazy";
     im.referrerPolicy = "no-referrer";
     im.addEventListener("error", () => a.remove());
     im.addEventListener("load", () => stickOnResize(im));
@@ -551,8 +567,8 @@ $("overlay").addEventListener("keydown", e => { if (e.key === "Escape") closeDia
 
 (async function init() {
   nickname = (store.get("mqttchat.nick") || "").trim().slice(0, MAX_NICK);
-  setShowImglink(store.get("mqttchat.showImglink") !== "0");
-  $("mediatoggle").addEventListener("change", e => setShowImglink(e.target.checked));
+  setShowMedia(store.get("mqttchat.showMedia") !== "0");
+  $("mediatoggle").addEventListener("change", e => setShowMedia(e.target.checked));
   refreshNick();
   note("join our Discord server and hang out with us: " + DISCORD, "invite");
   try {
