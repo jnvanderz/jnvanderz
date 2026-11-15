@@ -190,25 +190,6 @@
   #count { align-self: center; padding: 0 2px; color: var(--lo); font-variant-numeric: tabular-nums; }
   #count.near { color: #a05a00; font-weight: bold; }
   #count.full { color: #c00000; font-weight: bold; }
-  button.inline { font: 11px/1.2 Tahoma, "MS Sans Serif", Verdana, Arial, sans-serif; color: #000;
-    padding: 0 6px; vertical-align: baseline; }
-  .nick.clickable { cursor: pointer; }
-  .nick.clickable:hover { text-decoration: underline; }
-  .user { cursor: pointer; }
-  .user.muted { text-decoration: line-through; opacity: 0.45; }
-  #umenu { position: fixed; z-index: 20; min-width: 170px; max-width: 260px; padding: 6px;
-    background: var(--chrome); color: #000; border: 1px solid;
-    border-color: var(--chrome) #404040 #404040 var(--chrome);
-    box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--lo), 2px 2px 0 rgba(0,0,0,.4);
-    font: 12px/1.3 Tahoma, "MS Sans Serif", Verdana, Arial, sans-serif; }
-  #umenu[hidden] { display: none; }
-  #umname { font: bold 12px/13px "Chat Mono", "Lucida Console", Menlo, Consolas, monospace;
-    background: var(--bg); padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #umid { color: #404040; font-size: 10px; margin: 3px 0 6px; word-break: break-all; }
-  #umself { color: #404040; margin-bottom: 6px; }
-  .umbuttons { display: flex; gap: 4px; }
-  .umbuttons button { flex: 1; padding: 3px 6px; }
-  .umbuttons button[hidden] { display: none; }
   .dbuttons { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
   .dbuttons button { width: 94px; padding: 4px 0; }
   .dbuttons button:active:not(:disabled) { padding: 5px 0 3px 2px; }
@@ -247,16 +228,6 @@
   <div class="lbbar">
     <a id="lbopen" target="_blank" rel="noopener noreferrer nofollow">open original</a>
     <button type="button" id="lbclose">Close</button>
-  </div>
-</div>
-
-<div id="umenu" hidden role="menu">
-  <div id="umname"></div>
-  <div id="umid"></div>
-  <div id="umself" hidden>this is you</div>
-  <div class="umbuttons">
-    <button type="button" id="ummute" role="menuitem">Mute</button>
-    <button type="button" id="umcopy" role="menuitem">Copy ID</button>
   </div>
 </div>
 
@@ -358,63 +329,6 @@ function hue(id) {
   return h;
 }
 const colorOf = id => `hsl(${hue(id)} 90% 65%)`;
-
-const muted = new Set();
-
-function loadMuted() {
-  try {
-    const list = JSON.parse(store.get("mqttchat.muted") || "[]");
-    if (Array.isArray(list)) for (const id of list) if (typeof id === "string" && id.length < 40) muted.add(id);
-  } catch (e) {}
-}
-function saveMuted() { store.set("mqttchat.muted", JSON.stringify([...muted])); }
-
-function setMuted(id, on) {
-  if (!id || (keys && id === keys.id)) return;
-  if (on) muted.add(id); else muted.delete(id);
-  saveMuted();
-  const u = users.get(id);
-  if (u) u.classList.toggle("muted", on);
-  const name = u ? u.textContent : id.slice(0, 6);
-  if (on) {
-    let removed = 0;
-    for (const r of [...document.querySelectorAll("#log .msg")]) {
-      if (r.dataset.uid === id) { r.remove(); removed++; }
-    }
-    forgetTweetFrames();
-    const r = note("muted " + name + " (" + id.slice(0, 6) + ")" + (removed ? ", hid " + removed + " message" + (removed > 1 ? "s" : "") : "") +
-         ". click their name in the list, or here, to unmute. ");
-    const undo = document.createElement("button");
-    undo.type = "button"; undo.className = "inline"; undo.textContent = "unmute";
-    undo.addEventListener("click", () => { undo.remove(); if (muted.has(id)) setMuted(id, false); });
-    r.querySelector(".body").append(undo);
-  } else {
-    note("unmuted " + name + ". you'll see their new messages again.");
-  }
-}
-
-function openUserMenu(ev, id, name) {
-  ev.preventDefault(); ev.stopPropagation();
-  const menu = $("umenu");
-  $("umname").textContent = name;
-  $("umname").style.color = colorOf(id);
-  $("umid").textContent = "ID " + id;
-  const self = keys && id === keys.id;
-  const btn = $("ummute");
-  btn.hidden = self;
-  btn.textContent = muted.has(id) ? "Unmute" : "Mute";
-  $("umself").hidden = !self;
-  menu.dataset.uid = id;
-  menu.hidden = false;
-  const r = menu.getBoundingClientRect();
-  const x = Math.min(ev.clientX, window.innerWidth - r.width - 4);
-  const y = Math.min(ev.clientY + 4, window.innerHeight - r.height - 4);
-  menu.style.left = Math.max(4, x) + "px";
-  menu.style.top = Math.max(4, y) + "px";
-  (self ? $("umcopy") : btn).focus();
-}
-
-function closeUserMenu() { $("umenu").hidden = true; }
 const pad = n => String(n).padStart(2, "0");
 
 const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
@@ -1517,40 +1431,23 @@ function note(text, kind) {
   const { r } = row(Date.now(), " ".repeat(6), "~", text);
   r.className = "msg note" + (kind ? " " + kind : "");
   append(r);
-  return r;
-}
-
-function updateUser(msg) {
-  let u = users.get(msg.id);
-  if (!u) {
-    u = document.createElement("div"); u.className = "user";
-    u.tabIndex = 0;
-    u.style.color = colorOf(msg.id);
-    u.addEventListener("click", e => openUserMenu(e, msg.id, u.textContent));
-    u.addEventListener("keydown", e => {
-      if (e.key === "Enter" || e.key === " ") {
-        const b = u.getBoundingClientRect();
-        openUserMenu({ preventDefault() {}, stopPropagation() {}, clientX: b.left, clientY: b.bottom }, msg.id, u.textContent);
-      }
-    });
-    users.set(msg.id, u);
-    $("ulist").appendChild(u);
-  }
-  u.classList.toggle("muted", muted.has(msg.id));
-  u.textContent = msg.n;
-  u.title = "Public ID: " + msg.id + (muted.has(msg.id) ? " (muted)" : "") + " - click for options";
 }
 
 function showMessage(msg) {
-  updateUser(msg);
-  if (muted.has(msg.id)) return;
   const { r, id, nick } = row(msg.t, msg.id.slice(0, 6), msg.n, msg.m);
-  r.dataset.uid = msg.id;
   nick.style.color = colorOf(msg.id);
-  nick.classList.add("clickable");
-  nick.addEventListener("click", e => openUserMenu(e, msg.id, msg.n));
-  id.title = nick.title = "Public ID: " + msg.id + " - click for options";
+  id.title = nick.title = "Public ID: " + msg.id;
   append(r);
+
+  let u = users.get(msg.id);
+  if (!u) {
+    u = document.createElement("div"); u.className = "user";
+    u.style.color = colorOf(msg.id);
+    users.set(msg.id, u);
+    $("ulist").appendChild(u);
+  }
+  u.textContent = msg.n;
+  u.title = msg.id;
 }
 
 function refreshSend() {
@@ -1639,22 +1536,6 @@ $("nickbtn").addEventListener("click", () => {
   $("dinput").select();
 });
 
-$("ummute").addEventListener("click", () => {
-  const id = $("umenu").dataset.uid;
-  closeUserMenu();
-  setMuted(id, !muted.has(id));
-});
-$("umcopy").addEventListener("click", async () => {
-  const id = $("umenu").dataset.uid;
-  try { await navigator.clipboard.writeText(id); $("umcopy").textContent = "Copied!"; }
-  catch (e) { $("umcopy").textContent = "Copy failed"; }
-  setTimeout(() => { $("umcopy").textContent = "Copy ID"; closeUserMenu(); }, 700);
-});
-document.addEventListener("click", e => { if (!$("umenu").hidden && !$("umenu").contains(e.target)) closeUserMenu(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeUserMenu(); });
-window.addEventListener("resize", closeUserMenu);
-$("log").addEventListener("scroll", closeUserMenu);
-
 const COUNT_FROM = 400;
 function refreshCount() {
   const n = $("text").value.length;
@@ -1674,7 +1555,6 @@ $("overlay").addEventListener("keydown", e => { if (e.key === "Escape") closeDia
 
 (async function init() {
   nickname = (store.get("mqttchat.nick") || "").trim().slice(0, MAX_NICK);
-  loadMuted();
   setShowMedia(store.get("mqttchat.showMedia") !== "0");
   $("mediatoggle").addEventListener("change", e => setShowMedia(e.target.checked));
   refreshNick();
