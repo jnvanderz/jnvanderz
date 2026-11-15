@@ -64,6 +64,31 @@
   .imgs iframe.map { width: min(100%, 640px); height: 360px; border: 1px solid var(--line); }
   .imgs iframe.steam { width: min(100%, 646px); height: 190px; }
   .imgs a img { cursor: zoom-in; }
+  .imgs iframe.imgur { width: min(100%, 540px); height: 500px; }
+  .imgs iframe.pinterest { width: min(100%, 345px); height: 620px; border-radius: 16px; }
+  .imgs iframe.mixcloud { width: min(100%, 640px); height: 120px; }
+  .imgs iframe.fbpost { width: min(100%, 500px); height: 600px; background: #fff; border-radius: 8px; }
+  .imgs iframe.audiomack { width: min(100%, 640px); height: 252px; }
+  .imgs iframe.audiomack.tall { height: 400px; }
+  .imgs iframe.codepen { width: min(100%, 640px); height: 400px; }
+  .imgs iframe.gdoc { width: min(100%, 640px); height: 520px; background: #fff; border: 1px solid var(--line); }
+  .imgs iframe.gsheet { width: min(100%, 640px); height: 420px; background: #fff; border: 1px solid var(--line); }
+  .livewrap { display: flex; flex-direction: column; gap: 2px; width: min(100%, 640px); }
+  .livewrap iframe.wide { width: 100%; }
+  .live { color: var(--dim); }
+  .live.on { color: var(--warn); font-weight: bold; }
+  .live.off { color: var(--dim); }
+  .card { display: flex; gap: 8px; width: min(100%, 520px); padding: 6px; line-height: 1.35;
+          background: #1e1f1a; border: 1px solid var(--line); border-left: 3px solid var(--link);
+          color: var(--text) !important; text-decoration: none !important; }
+  .card:hover { background: #26271f; }
+  .card.loading { color: var(--dim) !important; border-left-color: var(--dim); }
+  .imgs .card img { flex: none; width: 96px; height: 96px; object-fit: cover; cursor: pointer; }
+  .imgs .card.small img { width: 48px; height: 48px; border-radius: 4px; }
+  .cinfo { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .ctitle { font-weight: bold; color: var(--link); overflow-wrap: anywhere; }
+  .ctext { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .cmeta { color: var(--dim); }
   .body strong { font-weight: bold; }
   .body em { font-style: italic; }
   .body code { background: #1e1f1a; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; }
@@ -501,7 +526,7 @@ function twitchMedia(href) {
   }
   if ((m = u.pathname.match(/^\/([A-Za-z0-9_]{1,25})\/?$/)) && !TWITCH_RESERVED.has(m[1].toLowerCase())) {
     return frame("https://player.twitch.tv/?" + new URLSearchParams({ channel: m[1], parent, autoplay: "false" }),
-                 href, "wide", { title: "Twitch channel" });
+                 href, "wide", { title: "Twitch channel", status: ["twitch", m[1]] });
   }
   return null;
 }
@@ -672,7 +697,8 @@ function kickMedia(href) {
   if (!u || hostOf(u) !== "kick.com") return null;
   const m = u.pathname.match(/^\/([A-Za-z0-9_-]{2,30})\/?$/);
   if (!m || KICK_RESERVED.has(m[1].toLowerCase())) return null;
-  return frame("https://player.kick.com/" + m[1] + "?autoplay=false", href, "wide", { title: "Kick channel" });
+  return frame("https://player.kick.com/" + m[1] + "?autoplay=false", href, "wide",
+               { title: "Kick channel", status: ["kick", m[1]] });
 }
 
 function bandcampMedia(href) {
@@ -738,6 +764,269 @@ function steamMedia(href) {
   return frame("https://store.steampowered.com/widget/" + m[1] + "/", href, "steam", { title: "Steam game" });
 }
 
+function directFileMedia(u, hosts) {
+  if (!hosts.test(u.hostname.toLowerCase())) return null;
+  for (const kind in MEDIA_TYPES) {
+    if (MEDIA_TYPES[kind].test(u.pathname)) {
+      const src = "https://" + u.hostname.toLowerCase() + u.pathname;
+      return { kind, src, href: src };
+    }
+  }
+  return null;
+}
+
+function imageHostMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  return directFileMedia(u, /^(?:files|litter)\.catbox\.moe$/)
+    || (/^\/[A-Za-z0-9]{4,20}\/[^\/]+$/.test(u.pathname) ? directFileMedia(u, /^i\.postimg\.cc$/) : null)
+    || (/^\/[A-Za-z0-9]{4,20}\/[^\/]+$/.test(u.pathname) ? directFileMedia(u, /^i\.ibb\.co$/) : null);
+}
+
+const IMGUR_RESERVED = new Set(["a", "gallery", "t", "user", "upload", "signin", "register", "search",
+  "hot", "new", "top", "rules", "privacy", "tos", "apps", "removalrequest", "emerald", "vidgif", "memegen"]);
+
+function imgurMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = u.hostname.toLowerCase();
+  let m;
+  if (host === "i.imgur.com") {
+    if (!(m = u.pathname.match(/^\/([A-Za-z0-9]{5,10})\.(jpe?g|png|gif|gifv|webp|mp4|webm)$/i))) return null;
+    const ext = m[2].toLowerCase();
+    if (ext === "gifv" || ext === "mp4" || ext === "webm") {
+      const src = "https://i.imgur.com/" + m[1] + ".mp4";
+      return { kind: "video", src, href: src, loop: true };
+    }
+    const src = "https://i.imgur.com/" + m[1] + "." + ext;
+    return { kind: "image", src, href: src };
+  }
+  if (host !== "imgur.com" && host !== "www.imgur.com" && host !== "m.imgur.com") return null;
+  let path = null;
+  if ((m = u.pathname.match(/^\/(?:a|gallery)\/(?:[A-Za-z0-9-]*-)?([A-Za-z0-9]{5,10})\/?$/))) path = "a/" + m[1];
+  else if ((m = u.pathname.match(/^\/([A-Za-z0-9]{5,10})\/?$/)) && !IMGUR_RESERVED.has(m[1].toLowerCase())) path = m[1];
+  if (!path) return null;
+  return { kind: "frame", src: "https://imgur.com/" + path + "/embed?pub=true&context=false", href,
+           cls: "imgur", title: "Imgur post", always: false };
+}
+
+const cardCache = new Map();
+function cachedJson(url) {
+  if (!cardCache.has(url)) {
+    cardCache.set(url, fetch(url, { headers: { Accept: "application/json" } })
+      .then(r => r.ok ? r.json() : null).catch(() => null));
+  }
+  return cardCache.get(url);
+}
+
+function wikipediaMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const m1 = u.hostname.toLowerCase().match(/^([a-z][a-z-]{1,11})\.(?:m\.)?wikipedia\.org$/);
+  const m2 = u.pathname.match(/^\/wiki\/([^\/?#]+)$/);
+  if (!m1 || !m2) return null;
+  let title;
+  try { title = decodeURIComponent(m2[1]); } catch (e) { return null; }
+  if (!title || /^[A-Za-z ]+:/.test(title)) return null;
+  const lang = m1[1];
+  const api = "https://" + lang + ".wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(title.replace(/ /g, "_"));
+  return { kind: "card", src: api, href, always: true, load: async () => {
+    const d = await cachedJson(api);
+    if (!d || !d.title || d.type === "disambiguation" && !d.extract) return null;
+    const text = (d.extract || "").trim();
+    return { title: d.title, text: text.length > 320 ? text.slice(0, 317).trimEnd() + "…" : text,
+             image: d.thumbnail && d.thumbnail.source, meta: "Wikipedia (" + lang + ")",
+             url: d.content_urls && d.content_urls.desktop && d.content_urls.desktop.page || href };
+  } };
+}
+
+const GH_RESERVED = new Set(["settings", "orgs", "features", "marketplace", "topics", "explore", "login",
+  "join", "about", "pricing", "sponsors", "apps", "collections", "trending", "enterprise", "notifications",
+  "issues", "pulls", "new", "codespaces", "search", "security", "site", "customer-stories", "readme",
+  "team", "solutions", "resources", "events", "github-copilot", "copilot", "dashboard", "account"]);
+
+function githubMedia(href) {
+  const u = parseUrl(href);
+  if (!u || (u.hostname.toLowerCase() !== "github.com" && u.hostname.toLowerCase() !== "www.github.com")) return null;
+  const m = u.pathname.match(/^\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})(?:\/.*)?$/);
+  if (!m || GH_RESERVED.has(m[1].toLowerCase())) return null;
+  const repo = m[2].replace(/\.git$/, "");
+  const api = "https://api.github.com/repos/" + m[1] + "/" + repo;
+  return { kind: "card", src: api, href, always: true, load: async () => {
+    const d = await cachedJson(api);
+    if (!d || !d.full_name) return null;
+    const fmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n);
+    const meta = ["★ " + fmt(d.stargazers_count || 0), "⑂ " + fmt(d.forks_count || 0)];
+    if (d.language) meta.unshift(d.language);
+    if (d.archived) meta.push("archived");
+    return { title: d.full_name, text: d.description || "", image: d.owner && d.owner.avatar_url,
+             meta: "GitHub · " + meta.join(" · "), url: d.html_url || href, small: true };
+  } };
+}
+
+function pinterestMedia(href) {
+  const u = parseUrl(href);
+  if (!u || !/^(?:[a-z]{2,3}\.)?pinterest\.(?:com|ca|co\.uk|com\.mx|com\.au|es|fr|de|it|pt|jp|cl|at|ch|ie|nz|ph|ru|se|dk|com\.br)$/.test(hostOf(u))) return null;
+  const m = u.pathname.match(/^\/pin\/(?:[A-Za-z0-9-]*--)?(\d{5,25})\/?$/);
+  if (!m) return null;
+  return frame("https://assets.pinterest.com/ext/embed.html?id=" + m[1], href, "pinterest", { title: "Pinterest pin" });
+}
+
+function dailymotionMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = hostOf(u);
+  let m;
+  if (host === "dailymotion.com") m = u.pathname.match(/^\/(?:embed\/)?video\/([A-Za-z0-9]{5,12})(?:_[^\/]*)?\/?$/);
+  else if (host === "dai.ly") m = u.pathname.match(/^\/([A-Za-z0-9]{5,12})\/?$/);
+  if (!m) return null;
+  return frame("https://www.dailymotion.com/embed/video/" + m[1], href, "wide", { title: "Dailymotion video" });
+}
+
+const MIXCLOUD_RESERVED = new Set(["discover", "upload", "select", "live", "settings", "dashboard",
+  "categories", "tag", "search", "about", "pro", "upgrade", "for-creators", "privacy", "terms", "widget"]);
+
+function mixcloudMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "mixcloud.com") return null;
+  const m = u.pathname.match(/^\/([A-Za-z0-9_-]{1,60})\/([A-Za-z0-9_%-]{1,200})\/?$/);
+  if (!m || MIXCLOUD_RESERVED.has(m[1].toLowerCase())) return null;
+  const feed = "/" + m[1] + "/" + m[2] + "/";
+  return frame("https://www.mixcloud.com/widget/iframe/?" + new URLSearchParams({ hide_cover: "1", feed }),
+               href, "mixcloud", { title: "Mixcloud player" });
+}
+
+function facebookMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = u.hostname.toLowerCase();
+  const isWatch = host === "fb.watch";
+  if (!isWatch && !/^(?:www\.|m\.|web\.|mbasic\.)?facebook\.com$/.test(host)) return null;
+  const p = u.pathname;
+  const clean = isWatch ? u.href : "https://www.facebook.com" + p + u.search;
+  const isVideo = isWatch || /\/videos\/|^\/watch\/?$|^\/reel\/|^\/share\/[vr]\/|^\/video\.php/.test(p);
+  const isPost = /\/posts\/|^\/permalink\.php|^\/photo(?:\.php|s?\/)|\/photos\/|^\/story\.php|^\/share\/p\//.test(p);
+  if (isVideo) {
+    const vertical = /^\/reel\/|^\/share\/r\//.test(p);
+    return frame("https://www.facebook.com/plugins/video.php?" + new URLSearchParams({ href: clean, show_text: "false" }),
+                 href, vertical ? "tiktok" : "wide", { title: "Facebook video" });
+  }
+  if (isPost) {
+    return frame("https://www.facebook.com/plugins/post.php?" + new URLSearchParams({ href: clean, show_text: "true", width: "500" }),
+                 href, "fbpost", { title: "Facebook post" });
+  }
+  return null;
+}
+
+function rumbleMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "rumble.com") return null;
+  let m;
+  if ((m = u.pathname.match(/^\/embed\/([A-Za-z0-9.]{4,20})\/?$/))) {
+    return frame("https://rumble.com/embed/" + m[1] + "/", href, "wide", { title: "Rumble video" });
+  }
+  if (!/^\/(?:v[A-Za-z0-9]{4,12}-[^\/]+\.html|shorts\/v[A-Za-z0-9]{4,12})\/?$/.test(u.pathname)) return null;
+  const clean = "https://rumble.com" + u.pathname;
+  return { kind: "lazyframe", src: clean, href, cls: "wide", title: "Rumble video", always: true,
+    resolve: async () => {
+      const d = await cachedJson("https://rumble.com/api/Media/oembed.json?url=" + encodeURIComponent(clean));
+      const mm = d && typeof d.html === "string" && d.html.match(/src=["'](https:\/\/rumble\.com\/embed\/[A-Za-z0-9.]{4,20}\/?[^"']*)["']/);
+      return mm ? mm[1] : null;
+    } };
+}
+
+function loomMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "loom.com") return null;
+  const m = u.pathname.match(/^\/(?:share|embed)\/(?:[A-Za-z0-9-]*-)?([a-f0-9]{32})\/?$/);
+  if (!m) return null;
+  return frame("https://www.loom.com/embed/" + m[1], href, "wide", { title: "Loom video" });
+}
+
+function audiomackMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "audiomack.com") return null;
+  let m = u.pathname.match(/^\/([A-Za-z0-9_-]{1,80})\/(song|album|playlist)\/([A-Za-z0-9_-]{1,200})\/?$/);
+  let artist, type, slug;
+  if (m) [, artist, type, slug] = m;
+  else if ((m = u.pathname.match(/^\/(song|album|playlist)\/([A-Za-z0-9_-]{1,80})\/([A-Za-z0-9_-]{1,200})\/?$/))) [, type, artist, slug] = m;
+  else return null;
+  return frame("https://audiomack.com/embed/" + type + "/" + artist + "/" + slug + "?background=1", href,
+               type === "song" ? "audiomack" : "audiomack tall", { title: "Audiomack player" });
+}
+
+function applePodcastsMedia(href) {
+  const u = parseUrl(href);
+  if (!u || u.hostname.toLowerCase() !== "podcasts.apple.com") return null;
+  const m = u.pathname.match(/^\/([a-z]{2})\/podcast\/(?:([A-Za-z0-9%_.-]{1,200})\/)?(id\d{3,15})\/?$/);
+  if (!m) return null;
+  const i = u.searchParams.get("i");
+  const q = i && /^\d{1,20}$/.test(i) ? "?i=" + i : "";
+  return frame("https://embed.podcasts.apple.com/" + m[1] + "/podcast/" + (m[2] ? m[2] + "/" : "") + m[3] + q,
+               href, q ? "apple" : "apple tall", { title: "Apple Podcasts player" });
+}
+
+function figmaMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "figma.com") return null;
+  if (!/^\/(?:file|design|proto|board|slides|deck|make)\/[A-Za-z0-9]{10,40}(?:\/|$)/.test(u.pathname)) return null;
+  return frame("https://www.figma.com/embed?" + new URLSearchParams({ embed_host: "share", url: u.href }),
+               href, "wide", { title: "Figma file" });
+}
+
+function codepenMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "codepen.io") return null;
+  const m = u.pathname.match(/^\/([A-Za-z0-9_-]{1,50})\/(?:pen|full|details|embed|pres|debug)\/([A-Za-z0-9]{4,12})\/?$/);
+  if (!m) return null;
+  return frame("https://codepen.io/" + m[1] + "/embed/" + m[2] + "?default-tab=result&theme-id=dark", href,
+               "codepen", { title: "CodePen demo" });
+}
+
+function googleDocsMedia(href) {
+  const u = parseUrl(href);
+  if (!u || u.hostname.toLowerCase() !== "docs.google.com") return null;
+  const m = u.pathname.match(/^\/(document|spreadsheets|presentation)(?:\/u\/\d+)?\/d\/(e\/)?([A-Za-z0-9_-]{20,120})(?:\/|$)/);
+  if (!m) return null;
+  const [, type, pub, id] = m;
+  const base = "https://docs.google.com/" + type + "/d/" + (pub ? "e/" : "") + id;
+  let src;
+  if (pub) {
+    src = type === "document" ? base + "/pub?embedded=true"
+        : type === "spreadsheets" ? base + "/pubhtml?widget=true&headers=false"
+        : base + "/embed?start=false&loop=false";
+  } else {
+    src = base + "/preview";
+  }
+  const cls = type === "presentation" ? "wide" : type === "spreadsheets" ? "gsheet" : "gdoc";
+  const title = type === "document" ? "Google Doc" : type === "spreadsheets" ? "Google Sheet" : "Google Slides";
+  return frame(src, href, cls, { title });
+}
+
+function liveStatus(type, channel) {
+  const url = type === "twitch"
+    ? "https://decapi.me/twitch/uptime/" + encodeURIComponent(channel)
+    : "https://kick.com/api/v2/channels/" + encodeURIComponent(channel);
+  const key = type + ":" + channel.toLowerCase();
+  if (!cardCache.has(key)) {
+    cardCache.set(key, fetch(url).then(async r => {
+      if (!r.ok) return null;
+      if (type === "twitch") {
+        const t = (await r.text()).trim();
+        if (!t || t.length > 120 || /not found|error|invalid|does not exist/i.test(t)) return null;
+        return /offline/i.test(t) ? { live: false } : { live: true, detail: "live for " + t };
+      }
+      const d = await r.json();
+      if (!d || typeof d !== "object" || !("livestream" in d)) return null;
+      const ls = d.livestream;
+      return ls ? { live: true, detail: (ls.viewer_count != null ? ls.viewer_count + " watching" : "") +
+                     (ls.session_title ? (ls.viewer_count != null ? " · " : "") + ls.session_title : "") }
+                : { live: false };
+    }).catch(() => null));
+  }
+  return cardCache.get(key);
+}
+
 function parseMessageData(e) {
   let data = e.data;
   if (typeof data === "string") { try { data = JSON.parse(data); } catch (err) { return null; } }
@@ -767,16 +1056,21 @@ window.addEventListener("message", e => {
         || frameFromSource("iframe.bsky", e.source);
       setFrameHeight(f, d.height);
     }
+  } else if (origin === "https://imgur.com") {
+    const d = parseMessageData(e);
+    if (d && d.message === "resize_imgur") setFrameHeight(frameFromSource("iframe.imgur", e.source), d.height);
   } else if (origin === "https://www.threads.com" || origin === "https://www.threads.net") {
     const d = parseMessageData(e);
     if (d && d.type === "MEASURE" && d.details) setFrameHeight(frameFromSource("iframe.threads", e.source), d.details.height);
   }
 });
 
-const EMBEDS = [youtubeMedia, twitterMedia, redditMedia, blueskyMedia, threadsMedia, spotifyMedia,
-  appleMusicMedia, deezerMedia, bandcampMedia, soundcloudMedia, twitchMedia, kickMedia, vimeoMedia,
-  streamableMedia, tiktokMedia, instagramMedia, mapsMedia, steamMedia, giphyMedia, tenorMedia,
-  imglinkMedia, discordMedia];
+const EMBEDS = [youtubeMedia, twitterMedia, redditMedia, blueskyMedia, threadsMedia, facebookMedia,
+  spotifyMedia, appleMusicMedia, applePodcastsMedia, deezerMedia, bandcampMedia, soundcloudMedia,
+  audiomackMedia, mixcloudMedia, twitchMedia, kickMedia, vimeoMedia, dailymotionMedia, rumbleMedia,
+  loomMedia, streamableMedia, tiktokMedia, instagramMedia, pinterestMedia, mapsMedia, steamMedia,
+  figmaMedia, codepenMedia, googleDocsMedia, wikipediaMedia, githubMedia, giphyMedia, tenorMedia,
+  imgurMedia, imageHostMedia, imglinkMedia, discordMedia];
 
 function mediaFor(href) {
   for (const fn of EMBEDS) {
@@ -797,17 +1091,30 @@ function mediaElement(item) {
   const { kind, src, href } = item;
   if (kind === "tweet") return tweetFrame(src);
   if (kind === "bsky") return bskyFrame(item);
-  if (kind === "frame") {
+  if (kind === "frame" || kind === "lazyframe") {
     const f = document.createElement("iframe");
     f.className = "emb " + item.cls;
-    f.src = src;
     f.title = item.title || "Embedded content";
     f.loading = "lazy";
     f.allow = "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture; web-share";
     f.allowFullscreen = true;
     f.referrerPolicy = "strict-origin-when-cross-origin";
-    return f;
+    if (kind === "frame") f.src = src;
+    else item.resolve().then(url => { if (url) f.src = url; else f.remove(); });
+    if (!item.status) return f;
+    const wrap = document.createElement("div"); wrap.className = "livewrap";
+    const badge = document.createElement("div"); badge.className = "live pending";
+    badge.textContent = item.status[1] + " · checking…";
+    wrap.append(badge, f);
+    liveStatus(item.status[0], item.status[1]).then(st => {
+      if (!st) { badge.remove(); return; }
+      badge.className = "live " + (st.live ? "on" : "off");
+      badge.textContent = (st.live ? "\u25CF LIVE" : "\u25CB offline") + " · " + item.status[1] +
+        (st.live && st.detail ? " · " + st.detail : "");
+    });
+    return wrap;
   }
+  if (kind === "card") return cardElement(item);
   if (kind === "youtube") {
     const f = document.createElement("iframe");
     f.className = "yt";
@@ -840,6 +1147,7 @@ function mediaElement(item) {
   m.preload = "metadata";
   m.src = src;
   if (kind === "video") m.playsInline = true;
+  if (item.loop) { m.loop = true; m.muted = true; m.autoplay = true; }
   m.setAttribute("referrerpolicy", "no-referrer");
   m.addEventListener("error", () => m.remove());
   m.addEventListener(kind === "video" ? "loadedmetadata" : "loadeddata", () => stickOnResize(m));
@@ -913,6 +1221,33 @@ function renderInline(parent, text, media, collect, depth) {
     }
   }
   if (last < text.length) parent.append(text.slice(last));
+}
+
+function cardElement(item) {
+  const a = document.createElement("a");
+  a.className = "card loading";
+  a.href = item.href; a.target = "_blank"; a.rel = "noopener noreferrer nofollow";
+  a.textContent = "loading preview…";
+  item.load().then(d => {
+    if (!d) { a.remove(); return; }
+    a.textContent = "";
+    a.className = "card" + (d.small ? " small" : "");
+    if (d.url && /^https:\/\//.test(d.url)) a.href = d.url;
+    if (d.image && /^https:\/\//.test(d.image)) {
+      const im = document.createElement("img");
+      im.src = d.image; im.alt = ""; im.loading = "lazy"; im.referrerPolicy = "no-referrer";
+      im.addEventListener("error", () => im.remove());
+      a.append(im);
+    }
+    const info = document.createElement("div"); info.className = "cinfo";
+    const t = document.createElement("div"); t.className = "ctitle"; t.textContent = d.title;
+    info.append(t);
+    if (d.text) { const p = document.createElement("div"); p.className = "ctext"; p.textContent = d.text; info.append(p); }
+    if (d.meta) { const mt = document.createElement("div"); mt.className = "cmeta"; mt.textContent = d.meta; info.append(mt); }
+    a.append(info);
+    stickOnResize(a);
+  }).catch(() => a.remove());
+  return a;
 }
 
 function linkify(el, text) {
