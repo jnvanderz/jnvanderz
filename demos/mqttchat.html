@@ -42,6 +42,16 @@
                     height: auto; border: 1px solid var(--line); background: #000; }
   .imgs iframe.tweet { display: block; width: min(100%, 550px); height: 360px;
                        border: 0; border-radius: 12px; background: transparent; color-scheme: normal; }
+  .imgs iframe.emb { display: block; border: 0; background: transparent; }
+  .imgs iframe.wide { width: min(100%, 640px); aspect-ratio: 16 / 9; height: auto;
+                      border: 1px solid var(--line); background: #000; }
+  .imgs iframe.spotify { width: min(100%, 640px); height: 152px; border-radius: 12px; }
+  .imgs iframe.spotify.tall { height: 352px; }
+  .imgs iframe.sc { width: min(100%, 640px); height: 166px; }
+  .imgs iframe.sc.tall { height: 450px; }
+  .imgs iframe.tiktok { width: min(100%, 325px); height: 578px; border-radius: 8px; background: #000; }
+  .imgs iframe.insta { width: min(100%, 400px); height: 560px; border-radius: 4px; background: #fff; }
+  .imgs iframe.tenor { width: min(100%, 320px); aspect-ratio: 1; height: auto; }
   .imgs audio { display: block; width: min(100%, 640px); height: 32px; }
   .legend { display: flex; align-items: center; gap: 8px; padding: 3px 6px;
             border-bottom: 1px solid var(--line); color: var(--dim); }
@@ -391,7 +401,177 @@ function forgetTweetFrames() {
   for (const [k, f] of tweetFrames) if (!f.isConnected) tweetFrames.delete(k);
 }
 
-const mediaFor = href => youtubeMedia(href) || twitterMedia(href) || imglinkMedia(href) || discordMedia(href);
+
+function parseUrl(href) {
+  try { return new URL(href); } catch (e) { return null; }
+}
+const hostOf = u => u.hostname.toLowerCase().replace(/^(?:www|m|mobile)\./, "");
+const frame = (src, href, cls, extra) => ({ kind: "frame", src, href, cls, always: true, ...extra });
+
+function spotifyMedia(href) {
+  const u = parseUrl(href);
+  if (!u || u.hostname.toLowerCase() !== "open.spotify.com") return null;
+  const m = u.pathname.match(/^\/(?:intl-[a-z-]+\/)?(?:embed\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]{10,40})\/?$/);
+  if (!m) return null;
+  const small = m[1] === "track" || m[1] === "episode";
+  return frame("https://open.spotify.com/embed/" + m[1] + "/" + m[2] + "?theme=0", href,
+               small ? "spotify" : "spotify tall", { title: "Spotify player" });
+}
+
+const SC_RESERVED = new Set(["discover", "stream", "search", "upload", "you", "settings", "charts",
+  "pages", "terms-of-use", "mobile", "signin", "notifications", "messages", "people", "feed", "imprint"]);
+
+function soundcloudMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = hostOf(u);
+  if (host !== "soundcloud.com" && host !== "on.soundcloud.com") return null;
+  const parts = u.pathname.split("/").filter(Boolean);
+  if (!parts.length || parts.some(p => !/^[A-Za-z0-9_-]+$/.test(p))) return null;
+  if (host === "soundcloud.com" && SC_RESERVED.has(parts[0].toLowerCase())) return null;
+  const clean = "https://" + host + "/" + parts.join("/");
+  const tall = host === "soundcloud.com" && (parts.length === 1 || parts[1] === "sets");
+  const q = new URLSearchParams({ url: clean, color: "#ff5500", auto_play: "false",
+    hide_related: "true", show_comments: "false", visual: "false" });
+  return frame("https://w.soundcloud.com/player/?" + q, href, tall ? "sc tall" : "sc",
+               { title: "SoundCloud player" });
+}
+
+const TWITCH_RESERVED = new Set(["directory", "videos", "settings", "downloads", "jobs", "p", "search",
+  "subscriptions", "inventory", "wallet", "drops", "turbo", "prime", "friends", "messages", "login",
+  "signup", "store", "privacy", "legal", "following", "creatorcamp", "moderator", "popout"]);
+
+function twitchMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = hostOf(u);
+  const parent = location.hostname || "localhost";
+  let m;
+  if (host === "clips.twitch.tv") {
+    m = u.pathname.match(/^\/([A-Za-z0-9_-]{3,100})\/?$/);
+    if (!m || m[1] === "embed") return null;
+    return frame("https://clips.twitch.tv/embed?" + new URLSearchParams({ clip: m[1], parent, autoplay: "false" }),
+                 href, "wide", { title: "Twitch clip" });
+  }
+  if (host !== "twitch.tv") return null;
+  if ((m = u.pathname.match(/^\/[A-Za-z0-9_]{1,25}\/clip\/([A-Za-z0-9_-]{3,100})\/?$/))) {
+    return frame("https://clips.twitch.tv/embed?" + new URLSearchParams({ clip: m[1], parent, autoplay: "false" }),
+                 href, "wide", { title: "Twitch clip" });
+  }
+  if ((m = u.pathname.match(/^\/videos\/(\d{1,15})\/?$/))) {
+    return frame("https://player.twitch.tv/?" + new URLSearchParams({ video: m[1], parent, autoplay: "false" }),
+                 href, "wide", { title: "Twitch video" });
+  }
+  if ((m = u.pathname.match(/^\/([A-Za-z0-9_]{1,25})\/?$/)) && !TWITCH_RESERVED.has(m[1].toLowerCase())) {
+    return frame("https://player.twitch.tv/?" + new URLSearchParams({ channel: m[1], parent, autoplay: "false" }),
+                 href, "wide", { title: "Twitch channel" });
+  }
+  return null;
+}
+
+function vimeoMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = hostOf(u);
+  let id = null, hash = u.searchParams.get("h");
+  if (host === "player.vimeo.com") {
+    const m = u.pathname.match(/^\/video\/(\d{1,12})\/?$/);
+    if (m) id = m[1];
+  } else if (host === "vimeo.com") {
+    const m = u.pathname.match(/^\/(?:channels\/[A-Za-z0-9_-]+\/|groups\/[A-Za-z0-9_-]+\/videos\/|album\/\d+\/video\/|showcase\/\d+\/video\/)?(\d{1,12})(?:\/([a-f0-9]{6,20}))?\/?$/);
+    if (m) { id = m[1]; hash = hash || m[2]; }
+  }
+  if (!id) return null;
+  const q = new URLSearchParams({ dnt: "1" });
+  if (hash && /^[a-f0-9]{6,20}$/.test(hash)) q.set("h", hash);
+  return frame("https://player.vimeo.com/video/" + id + "?" + q, href, "wide", { title: "Vimeo video" });
+}
+
+function streamableMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "streamable.com") return null;
+  const m = u.pathname.match(/^\/(?:e\/|o\/|s\/)?([A-Za-z0-9]{4,12})\/?$/);
+  if (!m) return null;
+  return frame("https://streamable.com/e/" + m[1], href, "wide", { title: "Streamable video" });
+}
+
+function tiktokMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "tiktok.com") return null;
+  const m = u.pathname.match(/^\/(?:@[A-Za-z0-9_.-]{1,40}\/(?:video|photo)|player\/v1|embed(?:\/v2)?|share\/video)\/(\d{8,25})\/?$/);
+  if (!m) return null;
+  return frame("https://www.tiktok.com/player/v1/" + m[1] + "?music_info=1&description=1&rel=0", href,
+               "tiktok", { title: "TikTok video" });
+}
+
+function instagramMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "instagram.com") return null;
+  const m = u.pathname.match(/^\/(?:[A-Za-z0-9_.]{1,30}\/)?(p|reel|reels|tv)\/([A-Za-z0-9_-]{5,40})\/?(?:embed\/?)?$/);
+  if (!m) return null;
+  const type = m[1] === "reels" ? "reel" : m[1];
+  return frame("https://www.instagram.com/" + type + "/" + m[2] + "/embed/", href, "insta",
+               { title: "Instagram post" });
+}
+
+function giphyMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = u.hostname.toLowerCase();
+  let id = null, m;
+  if (host === "giphy.com" || host === "www.giphy.com") {
+    if ((m = u.pathname.match(/^\/(?:gifs|stickers|embed)\/(?:[A-Za-z0-9-]*-)?([A-Za-z0-9]{6,40})\/?(?:fullscreen|html5)?\/?$/))) id = m[1];
+  } else if (/^(?:media\d?|i)\.giphy\.com$/.test(host)) {
+    if ((m = u.pathname.match(/^\/media\/(?:v1\.[^\/]+\/)?([A-Za-z0-9]{6,40})\/[A-Za-z0-9_.-]+$/))) id = m[1];
+    else if ((m = u.pathname.match(/^\/([A-Za-z0-9]{6,40})\.(?:gif|webp|mp4)$/))) id = m[1];
+  }
+  if (!id) return null;
+  return { kind: "image", src: "https://media.giphy.com/media/" + id + "/giphy.gif",
+           href: "https://giphy.com/gifs/" + id };
+}
+
+function tenorMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = u.hostname.toLowerCase();
+  let m;
+  if (host === "tenor.com" || host === "www.tenor.com") {
+    m = u.pathname.match(/^\/(?:[a-z]{2}(?:-[A-Za-z]{2,4})?\/)?view\/(?:[A-Za-z0-9%_-]*-)?(\d{4,25})\/?$/);
+    if (!m) return null;
+    return { kind: "frame", src: "https://tenor.com/embed/" + m[1], href, cls: "tenor",
+             title: "Tenor GIF", always: false };
+  }
+  if (/^(?:media\d?|c)\.tenor\.com$/.test(host)) {
+    m = u.pathname.match(/^\/(?:m\/)?([A-Za-z0-9_-]{8,40})\/([A-Za-z0-9_.-]+\.(gif|webp|png|mp4|webm))$/i);
+    if (!m) return null;
+    const src = "https://media.tenor.com/" + m[1] + "/" + m[2];
+    return { kind: /^(?:mp4|webm)$/i.test(m[3]) ? "video" : "image", src, href: src };
+  }
+  return null;
+}
+
+window.addEventListener("message", e => {
+  if (e.origin !== "https://www.instagram.com") return;
+  let data = e.data;
+  if (typeof data === "string") { try { data = JSON.parse(data); } catch (err) { return; } }
+  if (!data || data.type !== "MEASURE" || !data.details) return;
+  const h = Number(data.details.height);
+  const f = [...document.querySelectorAll("#log iframe.insta")].find(x => x.contentWindow === e.source);
+  if (!f || !(h > 0 && h < 5000)) return;
+  f.style.height = Math.ceil(h) + "px";
+  stickOnResize(f);
+});
+
+const EMBEDS = [youtubeMedia, twitterMedia, spotifyMedia, soundcloudMedia, twitchMedia, vimeoMedia,
+  streamableMedia, tiktokMedia, instagramMedia, giphyMedia, tenorMedia, imglinkMedia, discordMedia];
+
+function mediaFor(href) {
+  for (const fn of EMBEDS) {
+    const item = fn(href);
+    if (item) return item;
+  }
+  return null;
+}
 
 function stickOnResize(el) {
   const log = $("log");
@@ -400,8 +580,20 @@ function stickOnResize(el) {
   }
 }
 
-function mediaElement({ kind, src, href }) {
+function mediaElement(item) {
+  const { kind, src, href } = item;
   if (kind === "tweet") return tweetFrame(src);
+  if (kind === "frame") {
+    const f = document.createElement("iframe");
+    f.className = "emb " + item.cls;
+    f.src = src;
+    f.title = item.title || "Embedded content";
+    f.loading = "lazy";
+    f.allow = "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture; web-share";
+    f.allowFullscreen = true;
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    return f;
+  }
   if (kind === "youtube") {
     const f = document.createElement("iframe");
     f.className = "yt";
@@ -470,7 +662,7 @@ function linkify(el, text) {
   if (media.length) {
     const box = document.createElement("div"); box.className = "imgs";
     for (const item of media) {
-      if (item.kind === "youtube" || item.kind === "tweet") { box.append(mediaElement(item)); continue; }
+      if (item.kind === "youtube" || item.kind === "tweet" || item.always) { box.append(mediaElement(item)); continue; }
       const slot = document.createElement("span"); slot.className = "slot";
       slot._item = item;
       fillSlot(slot);
