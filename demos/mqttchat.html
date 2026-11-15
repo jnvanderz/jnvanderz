@@ -40,6 +40,8 @@
               border: 1px solid var(--line); background: #1e1f1a; }
   .imgs iframe.yt { display: block; width: min(100%, 640px); aspect-ratio: 16 / 9;
                     height: auto; border: 1px solid var(--line); background: #000; }
+  .imgs iframe.tweet { display: block; width: min(100%, 550px); height: 360px;
+                       border: 0; border-radius: 12px; background: transparent; color-scheme: normal; }
   .imgs audio { display: block; width: min(100%, 640px); height: 32px; }
   .legend { display: flex; align-items: center; gap: 8px; padding: 3px 6px;
             border-bottom: 1px solid var(--line); color: var(--dim); }
@@ -343,7 +345,53 @@ function discordMedia(href) {
   return null;
 }
 
-const mediaFor = href => youtubeMedia(href) || imglinkMedia(href) || discordMedia(href);
+const TWITTER_HOSTS = new Set(["twitter.com", "www.twitter.com", "mobile.twitter.com",
+  "x.com", "www.x.com", "mobile.x.com"]);
+const tweetFrames = new Map();
+let tweetSeq = 0;
+
+function twitterMedia(href) {
+  let u;
+  try { u = new URL(href); } catch (e) { return null; }
+  if (!TWITTER_HOSTS.has(u.hostname.toLowerCase())) return null;
+  const m = u.pathname.match(/^\/(?:[A-Za-z0-9_]{1,15}|i\/web|i)\/status(?:es)?\/(\d{1,20})(?:\/|$)/);
+  if (!m) return null;
+  return { kind: "tweet", src: m[1], href };
+}
+
+function tweetFrame(id) {
+  const embedId = "tw-" + (++tweetSeq);
+  const f = document.createElement("iframe");
+  f.className = "tweet";
+  f.title = "Post on X";
+  f.loading = "lazy";
+  f.scrolling = "no";
+  f.allowFullscreen = true;
+  f.referrerPolicy = "strict-origin-when-cross-origin";
+  const q = new URLSearchParams({ id, embedId, theme: "dark", dnt: "true", lang: "en" });
+  f.src = "https://platform.twitter.com/embed/Tweet.html?" + q;
+  tweetFrames.set(embedId, f);
+  return f;
+}
+
+window.addEventListener("message", e => {
+  if (e.origin !== "https://platform.twitter.com") return;
+  let data = e.data;
+  if (typeof data === "string") { try { data = JSON.parse(data); } catch (err) { return; } }
+  const msg = data && data["twttr.embed"];
+  if (!msg || msg.method !== "twttr.private.resize" || !Array.isArray(msg.params)) return;
+  const f = tweetFrames.get(msg.id);
+  const h = msg.params[0] && Number(msg.params[0].height);
+  if (!f || !f.isConnected || !(h > 0 && h < 5000)) return;
+  f.style.height = Math.ceil(h) + "px";
+  stickOnResize(f);
+});
+
+function forgetTweetFrames() {
+  for (const [k, f] of tweetFrames) if (!f.isConnected) tweetFrames.delete(k);
+}
+
+const mediaFor = href => youtubeMedia(href) || twitterMedia(href) || imglinkMedia(href) || discordMedia(href);
 
 function stickOnResize(el) {
   const log = $("log");
@@ -353,6 +401,7 @@ function stickOnResize(el) {
 }
 
 function mediaElement({ kind, src, href }) {
+  if (kind === "tweet") return tweetFrame(src);
   if (kind === "youtube") {
     const f = document.createElement("iframe");
     f.className = "yt";
@@ -421,7 +470,7 @@ function linkify(el, text) {
   if (media.length) {
     const box = document.createElement("div"); box.className = "imgs";
     for (const item of media) {
-      if (item.kind === "youtube") { box.append(mediaElement(item)); continue; }
+      if (item.kind === "youtube" || item.kind === "tweet") { box.append(mediaElement(item)); continue; }
       const slot = document.createElement("span"); slot.className = "slot";
       slot._item = item;
       fillSlot(slot);
@@ -450,6 +499,7 @@ function append(r) {
   const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
   log.appendChild(r);
   while (log.children.length > 300) log.firstChild.remove();
+  forgetTweetFrames();
   if (stick) log.scrollTop = log.scrollHeight;
 }
 
