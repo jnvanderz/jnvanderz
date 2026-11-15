@@ -41,8 +41,14 @@
   .imgs iframe.yt { display: block; width: min(100%, 640px); aspect-ratio: 16 / 9;
                     height: auto; border: 1px solid var(--line); background: #000; }
   .imgs audio { display: block; width: min(100%, 640px); height: 32px; }
-  .legend { padding: 3px 6px; border-bottom: 1px solid var(--line); color: var(--dim);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend { display: flex; align-items: center; gap: 8px; padding: 3px 6px;
+            border-bottom: 1px solid var(--line); color: var(--dim); }
+  .legend .ltext { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend label { flex: none; display: flex; align-items: center; gap: 4px; cursor: pointer;
+                  color: var(--text); white-space: nowrap; user-select: none; }
+  .legend input { margin: 0; cursor: pointer; accent-color: var(--link); }
+  .legend.off .ltext { text-decoration: line-through; }
+  .slot:empty { display: none; }
   .legend a { color: var(--link); }
   .legend a:hover { color: var(--hi); }
   .msg.note .body { opacity: 0.7; }
@@ -119,8 +125,9 @@
 </head>
 <body>
 <div class="app">
-  <div class="legend" title="Images, videos and audio from imglink.cc are played right here in the chat.">
-    Images, videos, audio or links from <a href="https://imglink.cc" target="_blank" rel="noopener noreferrer">https://imglink.cc</a> will be rendered right here in the chat. Upload yours and paste the link!
+  <div class="legend" id="legend">
+    <span class="ltext" title="Images, videos and audio from imglink.cc are played right here in the chat.">Images, videos, audio or links from <a href="https://imglink.cc" target="_blank" rel="noopener noreferrer">https://imglink.cc</a> will be rendered right here in the chat. Upload yours and paste the link!</span>
+    <label title="Turn off to stop loading imglink.cc images, videos and audio in the chat"><input type="checkbox" id="mediatoggle" checked> show imglink.cc media</label>
   </div>
   <div class="main">
     <div id="log" aria-live="polite">
@@ -304,6 +311,22 @@ function youtubeMedia(href) {
   return { kind: "youtube", src, href };
 }
 
+let showImglink = true;
+
+function fillSlot(slot) {
+  slot.textContent = "";
+  if (showImglink) slot.append(mediaElement(slot._item));
+}
+
+function setShowImglink(on) {
+  showImglink = on;
+  store.set("mqttchat.showImglink", on ? "1" : "0");
+  $("mediatoggle").checked = on;
+  $("legend").classList.toggle("off", !on);
+  for (const slot of document.querySelectorAll("#log .slot")) fillSlot(slot);
+  if (on) $("log").scrollTop = $("log").scrollHeight;
+}
+
 const mediaFor = href => youtubeMedia(href) || imglinkMedia(href);
 
 function stickOnResize(el) {
@@ -381,7 +404,13 @@ function linkify(el, text) {
   if (last < text.length) el.append(text.slice(last));
   if (media.length) {
     const box = document.createElement("div"); box.className = "imgs";
-    for (const item of media) box.append(mediaElement(item));
+    for (const item of media) {
+      if (item.kind === "youtube") { box.append(mediaElement(item)); continue; }
+      const slot = document.createElement("span"); slot.className = "slot";
+      slot._item = item;
+      fillSlot(slot);
+      box.append(slot);
+    }
     el.append(box);
   }
 }
@@ -522,6 +551,8 @@ $("overlay").addEventListener("keydown", e => { if (e.key === "Escape") closeDia
 
 (async function init() {
   nickname = (store.get("mqttchat.nick") || "").trim().slice(0, MAX_NICK);
+  setShowImglink(store.get("mqttchat.showImglink") !== "0");
+  $("mediatoggle").addEventListener("change", e => setShowImglink(e.target.checked));
   refreshNick();
   note("join our Discord server and hang out with us: " + DISCORD, "invite");
   try {
