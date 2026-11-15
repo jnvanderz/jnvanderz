@@ -64,6 +64,10 @@
   .imgs iframe.map { width: min(100%, 640px); height: 360px; border: 1px solid var(--line); }
   .imgs iframe.steam { width: min(100%, 646px); height: 190px; }
   .imgs a img { cursor: zoom-in; }
+  .imgs iframe.vocaroo { width: min(100%, 300px); height: 60px; }
+  .imgs iframe.poll { width: min(100%, 640px); height: 520px; border-radius: 8px; }
+  .imgs iframe.telegram { width: min(100%, 520px); height: 360px; }
+  .imgs iframe.mastodon { width: min(100%, 520px); height: 360px; border-radius: 8px; }
   .imgs iframe.imgur { width: min(100%, 540px); height: 500px; }
   .imgs iframe.pinterest { width: min(100%, 345px); height: 620px; border-radius: 16px; }
   .imgs iframe.mixcloud { width: min(100%, 640px); height: 120px; }
@@ -183,6 +187,28 @@
   .dbody { padding: 12px 12px 10px; }
   .dbody label { display: block; margin-bottom: 6px; }
   .dbody input { width: 100%; }
+  #count { align-self: center; padding: 0 2px; color: var(--lo); font-variant-numeric: tabular-nums; }
+  #count.near { color: #a05a00; font-weight: bold; }
+  #count.full { color: #c00000; font-weight: bold; }
+  button.inline { font: 11px/1.2 Tahoma, "MS Sans Serif", Verdana, Arial, sans-serif; color: #000;
+    padding: 0 6px; vertical-align: baseline; }
+  .nick.clickable { cursor: pointer; }
+  .nick.clickable:hover { text-decoration: underline; }
+  .user { cursor: pointer; }
+  .user.muted { text-decoration: line-through; opacity: 0.45; }
+  #umenu { position: fixed; z-index: 20; min-width: 170px; max-width: 260px; padding: 6px;
+    background: var(--chrome); color: #000; border: 1px solid;
+    border-color: var(--chrome) #404040 #404040 var(--chrome);
+    box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--lo), 2px 2px 0 rgba(0,0,0,.4);
+    font: 12px/1.3 Tahoma, "MS Sans Serif", Verdana, Arial, sans-serif; }
+  #umenu[hidden] { display: none; }
+  #umname { font: bold 12px/13px "Chat Mono", "Lucida Console", Menlo, Consolas, monospace;
+    background: var(--bg); padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #umid { color: #404040; font-size: 10px; margin: 3px 0 6px; word-break: break-all; }
+  #umself { color: #404040; margin-bottom: 6px; }
+  .umbuttons { display: flex; gap: 4px; }
+  .umbuttons button { flex: 1; padding: 3px 6px; }
+  .umbuttons button[hidden] { display: none; }
   .dbuttons { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
   .dbuttons button { width: 94px; padding: 4px 0; }
   .dbuttons button:active:not(:disabled) { padding: 5px 0 3px 2px; }
@@ -210,6 +236,7 @@
     <form class="bar" id="form">
       <button id="nickbtn" type="button" title="Change nickname">anonymous</button>
       <input id="text" type="text" maxlength="500" autocomplete="off" aria-label="Message">
+      <span id="count" hidden aria-live="polite"></span>
       <button id="sendbtn" disabled>Send</button>
     </form>
   </div>
@@ -220,6 +247,16 @@
   <div class="lbbar">
     <a id="lbopen" target="_blank" rel="noopener noreferrer nofollow">open original</a>
     <button type="button" id="lbclose">Close</button>
+  </div>
+</div>
+
+<div id="umenu" hidden role="menu">
+  <div id="umname"></div>
+  <div id="umid"></div>
+  <div id="umself" hidden>this is you</div>
+  <div class="umbuttons">
+    <button type="button" id="ummute" role="menuitem">Mute</button>
+    <button type="button" id="umcopy" role="menuitem">Copy ID</button>
   </div>
 </div>
 
@@ -321,6 +358,63 @@ function hue(id) {
   return h;
 }
 const colorOf = id => `hsl(${hue(id)} 90% 65%)`;
+
+const muted = new Set();
+
+function loadMuted() {
+  try {
+    const list = JSON.parse(store.get("mqttchat.muted") || "[]");
+    if (Array.isArray(list)) for (const id of list) if (typeof id === "string" && id.length < 40) muted.add(id);
+  } catch (e) {}
+}
+function saveMuted() { store.set("mqttchat.muted", JSON.stringify([...muted])); }
+
+function setMuted(id, on) {
+  if (!id || (keys && id === keys.id)) return;
+  if (on) muted.add(id); else muted.delete(id);
+  saveMuted();
+  const u = users.get(id);
+  if (u) u.classList.toggle("muted", on);
+  const name = u ? u.textContent : id.slice(0, 6);
+  if (on) {
+    let removed = 0;
+    for (const r of [...document.querySelectorAll("#log .msg")]) {
+      if (r.dataset.uid === id) { r.remove(); removed++; }
+    }
+    forgetTweetFrames();
+    const r = note("muted " + name + " (" + id.slice(0, 6) + ")" + (removed ? ", hid " + removed + " message" + (removed > 1 ? "s" : "") : "") +
+         ". click their name in the list, or here, to unmute. ");
+    const undo = document.createElement("button");
+    undo.type = "button"; undo.className = "inline"; undo.textContent = "unmute";
+    undo.addEventListener("click", () => { undo.remove(); if (muted.has(id)) setMuted(id, false); });
+    r.querySelector(".body").append(undo);
+  } else {
+    note("unmuted " + name + ". you'll see their new messages again.");
+  }
+}
+
+function openUserMenu(ev, id, name) {
+  ev.preventDefault(); ev.stopPropagation();
+  const menu = $("umenu");
+  $("umname").textContent = name;
+  $("umname").style.color = colorOf(id);
+  $("umid").textContent = "ID " + id;
+  const self = keys && id === keys.id;
+  const btn = $("ummute");
+  btn.hidden = self;
+  btn.textContent = muted.has(id) ? "Unmute" : "Mute";
+  $("umself").hidden = !self;
+  menu.dataset.uid = id;
+  menu.hidden = false;
+  const r = menu.getBoundingClientRect();
+  const x = Math.min(ev.clientX, window.innerWidth - r.width - 4);
+  const y = Math.min(ev.clientY + 4, window.innerHeight - r.height - 4);
+  menu.style.left = Math.max(4, x) + "px";
+  menu.style.top = Math.max(4, y) + "px";
+  (self ? $("umcopy") : btn).focus();
+}
+
+function closeUserMenu() { $("umenu").hidden = true; }
 const pad = n => String(n).padStart(2, "0");
 
 const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
@@ -1027,6 +1121,103 @@ function liveStatus(type, channel) {
   return cardCache.get(key);
 }
 
+function medalMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "medal.tv") return null;
+  const m = u.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(?:games\/[A-Za-z0-9_-]{1,80}\/)?clips?\/([A-Za-z0-9_-]{4,40})(?:\/([A-Za-z0-9_-]{4,40}))?\/?$/);
+  if (!m) return null;
+  const path = m[1] + (m[2] ? "/" + m[2] : "");
+  return frame("https://medal.tv/clip/" + path + "?autoplay=0&muted=0&loop=0", href, "wide", { title: "Medal clip" });
+}
+
+function gyazoMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = u.hostname.toLowerCase();
+  let m;
+  if (host === "i.gyazo.com") {
+    if (!(m = u.pathname.match(/^\/([a-f0-9]{32})\.(png|jpe?g|gif|webp|mp4)$/i))) return null;
+    const src = "https://i.gyazo.com/" + m[1] + "." + m[2].toLowerCase();
+    return /^mp4$/i.test(m[2]) ? { kind: "video", src, href: src, loop: true } : { kind: "image", src, href: src };
+  }
+  if (host !== "gyazo.com" && host !== "www.gyazo.com") return null;
+  if (!(m = u.pathname.match(/^\/([a-f0-9]{32})\/?$/))) return null;
+  const base = "https://i.gyazo.com/" + m[1];
+  return { kind: "image", src: base + ".png", href, fallbacks: [base + ".jpg", base + ".gif"] };
+}
+
+function vocarooMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = hostOf(u);
+  if (host !== "vocaroo.com" && host !== "voca.ro") return null;
+  const m = u.pathname.match(/^\/(?:embed\/)?([A-Za-z0-9]{8,16})\/?$/);
+  if (!m || /^(?:upload|about|privacy|terms|contact|settings)$/i.test(m[1])) return null;
+  return frame("https://vocaroo.com/embed/" + m[1] + "?autoplay=0", href, "vocaroo", { title: "Vocaroo voice note" });
+}
+
+function strawpollMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "strawpoll.com") return null;
+  const m = u.pathname.match(/^\/(?:polls\/|embed\/)?([A-Za-z0-9]{6,16})\/?(?:results\/?)?$/);
+  if (!m || /^(?:create|login|register|pricing|features|blog|help|about|privacy|terms|dashboard|account|meetings|schedule|polls)$/i.test(m[1])) return null;
+  return frame("https://strawpoll.com/embed/" + m[1], href, "poll", { title: "StrawPoll" });
+}
+
+const TG_RESERVED = new Set(["s", "c", "joinchat", "addstickers", "addemoji", "share", "proxy", "socks",
+  "iv", "login", "setlanguage", "boost", "contact", "bg", "addtheme", "invoice", "m"]);
+
+function telegramMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = u.hostname.toLowerCase();
+  if (host !== "t.me" && host !== "telegram.me" && host !== "www.t.me") return null;
+  const m = u.pathname.match(/^\/(?:s\/)?([A-Za-z][A-Za-z0-9_]{3,31})\/(\d{1,10})\/?$/);
+  if (!m || TG_RESERVED.has(m[1].toLowerCase())) return null;
+  return frame("https://t.me/" + m[1] + "/" + m[2] + "?embed=1&dark=1", href, "telegram", { title: "Telegram post" });
+}
+
+const mastodonFrames = new Map();
+let mastodonSeq = 0;
+
+function mastodonMedia(href) {
+  const u = parseUrl(href);
+  if (!u || u.protocol !== "https:" || u.port) return null;
+  const host = u.hostname.toLowerCase();
+  if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(host)) return null;
+  if (/(?:^|\.)(?:youtube|youtu|tiktok|threads|instagram|facebook|twitter|x|medium|substack|github|reddit|twitch|kick|google|bsky|discord|spotify|soundcloud|vimeo|linkedin|pinterest)\.[a-z.]+$/.test(host)) return null;
+  const m = u.pathname.match(/^\/@([A-Za-z0-9_]{1,30})(?:@[a-z0-9.-]+)?\/(\d{15,20})\/?$/);
+  if (!m) return null;
+  return { kind: "mastodon", src: "https://" + host + u.pathname.replace(/\/$/, "") + "/embed",
+           origin: "https://" + host, href, always: true };
+}
+
+function mastodonFrame(item) {
+  const id = ++mastodonSeq;
+  const f = document.createElement("iframe");
+  f.className = "emb mastodon";
+  f.title = "Mastodon post";
+  f.loading = "lazy";
+  f.scrolling = "no";
+  f.referrerPolicy = "strict-origin-when-cross-origin";
+  f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox");
+  f.src = item.src;
+  mastodonFrames.set(id, { f, origin: item.origin });
+  f.addEventListener("load", () => {
+    try { f.contentWindow.postMessage({ type: "setHeight", id }, item.origin); } catch (e) {}
+  });
+  return f;
+}
+
+function archiveMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "archive.org") return null;
+  const m = u.pathname.match(/^\/(?:details|embed)\/([A-Za-z0-9._-]{2,120})(?:\/([^?#]*))?\/?$/);
+  if (!m) return null;
+  const file = m[2] && /^[A-Za-z0-9._%() -]{1,200}$/.test(m[2]) && !/^(?:page|mode)\b/.test(m[2]) ? "/" + m[2] : "";
+  return frame("https://archive.org/embed/" + m[1] + file, href, "wide", { title: "Internet Archive" });
+}
+
 function parseMessageData(e) {
   let data = e.data;
   if (typeof data === "string") { try { data = JSON.parse(data); } catch (err) { return null; } }
@@ -1046,6 +1237,13 @@ function setFrameHeight(f, h) {
 
 window.addEventListener("message", e => {
   const origin = e.origin;
+  const md = e.data;
+  if (md && typeof md === "object" && md.type === "setHeight" && mastodonFrames.has(md.id)) {
+    const { f, origin: o } = mastodonFrames.get(md.id);
+    if (o === origin && f.contentWindow === e.source) setFrameHeight(f, md.height);
+    if (!f.isConnected) mastodonFrames.delete(md.id);
+    return;
+  }
   if (origin === "https://embed.reddit.com") {
     const d = parseMessageData(e);
     if (d && d.type === "resize.embed") setFrameHeight(frameFromSource("iframe.reddit", e.source), d.data);
@@ -1056,6 +1254,9 @@ window.addEventListener("message", e => {
         || frameFromSource("iframe.bsky", e.source);
       setFrameHeight(f, d.height);
     }
+  } else if (origin === "https://t.me") {
+    const d = parseMessageData(e);
+    if (d && d.event === "resize") setFrameHeight(frameFromSource("iframe.telegram", e.source), d.height);
   } else if (origin === "https://imgur.com") {
     const d = parseMessageData(e);
     if (d && d.message === "resize_imgur") setFrameHeight(frameFromSource("iframe.imgur", e.source), d.height);
@@ -1070,7 +1271,8 @@ const EMBEDS = [youtubeMedia, twitterMedia, redditMedia, blueskyMedia, threadsMe
   audiomackMedia, mixcloudMedia, twitchMedia, kickMedia, vimeoMedia, dailymotionMedia, rumbleMedia,
   loomMedia, streamableMedia, tiktokMedia, instagramMedia, pinterestMedia, mapsMedia, steamMedia,
   figmaMedia, codepenMedia, googleDocsMedia, wikipediaMedia, githubMedia, giphyMedia, tenorMedia,
-  imgurMedia, imageHostMedia, imglinkMedia, discordMedia];
+  medalMedia, vocarooMedia, strawpollMedia, telegramMedia, archiveMedia, gyazoMedia,
+  imgurMedia, imageHostMedia, imglinkMedia, discordMedia, mastodonMedia];
 
 function mediaFor(href) {
   for (const fn of EMBEDS) {
@@ -1091,6 +1293,7 @@ function mediaElement(item) {
   const { kind, src, href } = item;
   if (kind === "tweet") return tweetFrame(src);
   if (kind === "bsky") return bskyFrame(item);
+  if (kind === "mastodon") return mastodonFrame(item);
   if (kind === "frame" || kind === "lazyframe") {
     const f = document.createElement("iframe");
     f.className = "emb " + item.cls;
@@ -1132,12 +1335,16 @@ function mediaElement(item) {
     const im = document.createElement("img");
     im.src = src; im.alt = "shared image"; im.loading = "lazy";
     im.referrerPolicy = "no-referrer";
-    im.addEventListener("error", () => a.remove());
+    const fallbacks = (item.fallbacks || []).slice();
+    let current = src;
+    im.addEventListener("error", () => {
+      if (fallbacks.length) { current = fallbacks.shift(); im.src = current; } else a.remove();
+    });
     im.addEventListener("load", () => stickOnResize(im));
     a.addEventListener("click", e => {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
       e.preventDefault();
-      openLightbox(src, href);
+      openLightbox(current, href);
     });
     a.append(im);
     return a;
@@ -1310,23 +1517,40 @@ function note(text, kind) {
   const { r } = row(Date.now(), " ".repeat(6), "~", text);
   r.className = "msg note" + (kind ? " " + kind : "");
   append(r);
+  return r;
 }
 
-function showMessage(msg) {
-  const { r, id, nick } = row(msg.t, msg.id.slice(0, 6), msg.n, msg.m);
-  nick.style.color = colorOf(msg.id);
-  id.title = nick.title = "Public ID: " + msg.id;
-  append(r);
-
+function updateUser(msg) {
   let u = users.get(msg.id);
   if (!u) {
     u = document.createElement("div"); u.className = "user";
+    u.tabIndex = 0;
     u.style.color = colorOf(msg.id);
+    u.addEventListener("click", e => openUserMenu(e, msg.id, u.textContent));
+    u.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        const b = u.getBoundingClientRect();
+        openUserMenu({ preventDefault() {}, stopPropagation() {}, clientX: b.left, clientY: b.bottom }, msg.id, u.textContent);
+      }
+    });
     users.set(msg.id, u);
     $("ulist").appendChild(u);
   }
+  u.classList.toggle("muted", muted.has(msg.id));
   u.textContent = msg.n;
-  u.title = msg.id;
+  u.title = "Public ID: " + msg.id + (muted.has(msg.id) ? " (muted)" : "") + " - click for options";
+}
+
+function showMessage(msg) {
+  updateUser(msg);
+  if (muted.has(msg.id)) return;
+  const { r, id, nick } = row(msg.t, msg.id.slice(0, 6), msg.n, msg.m);
+  r.dataset.uid = msg.id;
+  nick.style.color = colorOf(msg.id);
+  nick.classList.add("clickable");
+  nick.addEventListener("click", e => openUserMenu(e, msg.id, msg.n));
+  id.title = nick.title = "Public ID: " + msg.id + " - click for options";
+  append(r);
 }
 
 function refreshSend() {
@@ -1393,6 +1617,7 @@ $("form").addEventListener("submit", async e => {
   if (!text || !keys || !connected) return;
   const nick = nickname || "anonymous";
   $("text").value = "";
+  refreshCount();
   const payload = await signMessage(keys, nick, text.slice(0, MAX_TEXT));
   client.publish(TOPIC, payload, { qos: 1, retain: true });
   $("text").focus();
@@ -1413,6 +1638,32 @@ $("nickbtn").addEventListener("click", () => {
   $("dinput").focus();
   $("dinput").select();
 });
+
+$("ummute").addEventListener("click", () => {
+  const id = $("umenu").dataset.uid;
+  closeUserMenu();
+  setMuted(id, !muted.has(id));
+});
+$("umcopy").addEventListener("click", async () => {
+  const id = $("umenu").dataset.uid;
+  try { await navigator.clipboard.writeText(id); $("umcopy").textContent = "Copied!"; }
+  catch (e) { $("umcopy").textContent = "Copy failed"; }
+  setTimeout(() => { $("umcopy").textContent = "Copy ID"; closeUserMenu(); }, 700);
+});
+document.addEventListener("click", e => { if (!$("umenu").hidden && !$("umenu").contains(e.target)) closeUserMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeUserMenu(); });
+window.addEventListener("resize", closeUserMenu);
+$("log").addEventListener("scroll", closeUserMenu);
+
+const COUNT_FROM = 400;
+function refreshCount() {
+  const n = $("text").value.length;
+  const el = $("count");
+  el.hidden = n < COUNT_FROM;
+  el.textContent = n + "/" + MAX_TEXT;
+  el.className = n >= MAX_TEXT ? "full" : n >= MAX_TEXT - 20 ? "near" : "";
+}
+$("text").addEventListener("input", refreshCount);
 $("dialog").addEventListener("submit", e => { e.preventDefault(); closeDialog(true); });
 $("dcancel").addEventListener("click", () => closeDialog(false));
 $("dclose").addEventListener("click", () => closeDialog(false));
@@ -1423,6 +1674,7 @@ $("overlay").addEventListener("keydown", e => { if (e.key === "Escape") closeDia
 
 (async function init() {
   nickname = (store.get("mqttchat.nick") || "").trim().slice(0, MAX_NICK);
+  loadMuted();
   setShowMedia(store.get("mqttchat.showMedia") !== "0");
   $("mediatoggle").addEventListener("change", e => setShowMedia(e.target.checked));
   refreshNick();
