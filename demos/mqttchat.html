@@ -13,7 +13,7 @@
   :root {
     --bg: #272822; --text: #f8f8f2; --dim: #555; --line: #333;
     --chrome: #d4d0c8; --chrome-text: #000; --hi: #fff; --lo: #808080; --dark: #000;
-    --warn: #ff6b5b; --ok: #5fdc7a;
+    --warn: #ff6b5b; --ok: #5fdc7a; --link: #66d9ef; --discord: #8c9eff;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -24,8 +24,6 @@
   .app { height: 100%; display: flex; flex-direction: column; }
   .main { flex: 1; display: flex; min-height: 0; }
 
-  /* Message list: grey time, short ID, right-aligned coloured nickname, then the text
-     behind a thin divider. */
   #log { flex: 1; overflow-x: hidden; overflow-y: scroll; min-width: 0; -webkit-font-smoothing: none; }
   .msg { display: flex; align-items: flex-start; }
   .time { flex: none; padding: 0 5px; color: var(--dim); }
@@ -34,8 +32,12 @@
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .body { flex: 1; min-width: 0; padding: 0 5px; border-left: 1px solid var(--line);
           white-space: pre-wrap; word-break: break-word; }
+  .body a { color: var(--link); text-decoration: underline; }
+  .body a:hover { color: var(--hi); }
   .msg.note .body { opacity: 0.7; }
   .msg.note.err .body { opacity: 1; color: var(--warn); }
+  .msg.note.invite .body { opacity: 1; color: var(--discord); }
+  .msg.note.invite .body a { color: var(--discord); font-weight: bold; }
   @media (max-width: 560px) { .tag { display: none; } }
 
   #users {
@@ -47,11 +49,13 @@
   #ulist { flex: 1; overflow-y: auto; padding: 0 5px; }
   .user { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .user:hover { background: #494a44; }
+  #discord { display: block; padding: 2px 5px; border-top: 1px solid var(--line);
+             color: var(--discord); text-decoration: none; }
+  #discord:hover { background: #494a44; text-decoration: underline; }
   #status { padding: 2px 5px; border-top: 1px solid var(--line); color: var(--warn); }
   #status.on { color: var(--ok); }
   #status::before { content: "\25CF  "; }
 
-  /* Grey beveled bar and controls */
   .chrome {
     background: var(--chrome); color: var(--chrome-text);
     border-top: 2px solid var(--hi);
@@ -78,7 +82,6 @@
   button:disabled { color: var(--lo); text-shadow: 1px 1px 0 var(--hi); cursor: default; }
   input:focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
   button:focus-visible { outline: 1px dotted #000; outline-offset: -5px; }
-  /* Prompt dialog */
   #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 12px; }
   #overlay[hidden] { display: none; }
   .dialog {
@@ -111,6 +114,7 @@
     <aside id="users">
       <div class="uhead">seen here</div>
       <div id="ulist"></div>
+      <a id="discord" href="https://discord.gg/QWUXMggf" target="_blank" rel="noopener noreferrer">&#x2192; join our Discord</a>
       <div id="status">connecting…</div>
     </aside>
   </div>
@@ -131,10 +135,10 @@
       <button type="button" id="dclose" aria-label="Close">&#x2715;</button>
     </div>
     <div class="dbody">
-      <label for="dinput">nickname ?</label>
+      <label for="dinput">Nickname?</label>
       <input id="dinput" type="text" maxlength="24" autocomplete="off" spellcheck="false">
       <div class="dbuttons">
-        <button id="dok">Ok</button>
+        <button id="dok">OK</button>
         <button type="button" id="dcancel">Cancel</button>
       </div>
     </div>
@@ -146,9 +150,8 @@
 "use strict";
 
 const TOPIC  = "https://jnvanderz.github.io/";
-//const BROKER = "wss://test.mosquitto.org:8081";
-//had to change the MQTT broker because that other one was being more restrictive on VPN's and such
 const BROKER = "wss://broker.emqx.io:8084/mqtt";
+const DISCORD = "https://discord.gg/QWUXMggf";
 
 const SALT = "jnvanderz.github.io/mqttchat|identity-v1|";
 const MAX_NICK = 24, MAX_TEXT = 500;
@@ -184,7 +187,6 @@ async function signMessage(keys, n, m) {
   return JSON.stringify({ n, k: keys.pub, t, m, s: b64(new Uint8Array(sig)) });
 }
 
-// Returns {n, t, m, s, id} if the payload is well formed and the signature is valid, else null.
 async function verifyMessage(raw) {
   try {
     if (raw.length > 2000) return null;
@@ -203,7 +205,6 @@ async function verifyMessage(raw) {
 function randomIdentity() {
   return b64(crypto.getRandomValues(new Uint8Array(24)));
 }
-// CRYPTO-END
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -211,13 +212,13 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
 };
 
-let nickname = "";   // empty means "anonymous"
-let keys = null;       // current derived keypair
+let nickname = "";
+let keys = null;
 let client = null;
 let connected = false;
 let welcomed = false;
-const seen = new Set(); // signatures already shown
-const users = new Map(); // public ID -> row in the "seen here" list
+const seen = new Set();
+const users = new Map();
 
 function hue(id) {
   let h = 0;
@@ -227,6 +228,40 @@ function hue(id) {
 const colorOf = id => `hsl(${hue(id)} 90% 65%)`;
 const pad = n => String(n).padStart(2, "0");
 
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
+const TRAILING = /[.,;:!?)\]}>'"]+$/;
+
+function linkify(el, text) {
+  el.textContent = "";
+  let last = 0;
+  for (const match of text.matchAll(URL_RE)) {
+    let url = match[0];
+    const trail = url.match(TRAILING);
+    if (trail) url = url.slice(0, -trail[0].length);
+    if (!url) continue;
+    const start = match.index;
+    if (start > last) el.append(text.slice(last, start));
+    const href = /^https?:\/\//i.test(url) ? url : "https://" + url;
+    let safe = null;
+    try {
+      const u = new URL(href);
+      if (u.protocol === "http:" || u.protocol === "https:") safe = u.href;
+    } catch (e) {}
+    if (safe) {
+      const a = document.createElement("a");
+      a.href = safe;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer nofollow";
+      a.textContent = url;
+      el.append(a);
+    } else {
+      el.append(url);
+    }
+    last = start + url.length;
+  }
+  if (last < text.length) el.append(text.slice(last));
+}
+
 function row(t, idText, nickText, bodyText) {
   const d = new Date(t);
   const r = document.createElement("div"); r.className = "msg";
@@ -235,7 +270,8 @@ function row(t, idText, nickText, bodyText) {
   time.title = d.toLocaleString();
   const id = document.createElement("span"); id.className = "tag"; id.textContent = idText;
   const nick = document.createElement("span"); nick.className = "nick"; nick.textContent = nickText;
-  const body = document.createElement("span"); body.className = "body"; body.textContent = bodyText;
+  const body = document.createElement("span"); body.className = "body";
+  linkify(body, bodyText);
   r.append(time, id, nick, body);
   return { r, id, nick };
 }
@@ -248,13 +284,12 @@ function append(r) {
   if (stick) log.scrollTop = log.scrollHeight;
 }
 
-function note(text, isError) {
-  const { r } = row(Date.now(), "\u00a0".repeat(6), "~", text);
-  r.className = "msg note" + (isError ? " err" : "");
+function note(text, kind) {
+  const { r } = row(Date.now(), " ".repeat(6), "~", text);
+  r.className = "msg note" + (kind ? " " + kind : "");
   append(r);
 }
 
-// All remote content goes in through textContent, never innerHTML.
 function showMessage(msg) {
   const { r, id, nick } = row(msg.t, msg.id.slice(0, 6), msg.n, msg.m);
   nick.style.color = colorOf(msg.id);
@@ -279,8 +314,6 @@ function refreshNick() {
   $("nickbtn").textContent = nickname || "anonymous";
 }
 
-// The secret identity is generated on the first visit and kept in this browser's
-// localStorage, so the same public ID comes back on every later visit.
 async function loadIdentity() {
   let identity = store.get("mqttchat.identity");
   if (!identity) {
@@ -292,7 +325,6 @@ async function loadIdentity() {
   refreshSend();
 }
 
-// Incoming messages are verified one at a time so they stay in order.
 let queue = Promise.resolve();
 function onMessage(topic, payload, packet) {
   if (topic !== TOPIC) return;
@@ -300,8 +332,6 @@ function onMessage(topic, payload, packet) {
   queue = queue.then(async () => {
     const msg = await verifyMessage(raw);
     if (!msg || seen.has(msg.s)) return;
-    // Drop live messages with a timestamp far from now: they are replays of old ones.
-    // The retained message is allowed to be old; its signed time is displayed.
     if (!packet.retain && Math.abs(Date.now() - msg.t) > 10 * 60 * 1000) return;
     seen.add(msg.s);
     showMessage(msg);
@@ -317,7 +347,10 @@ function connect() {
   client.on("connect", () => {
     connected = true;
     $("status").textContent = "connected"; $("status").className = "on";
-    if (!welcomed) { welcomed = true; note("connected to " + TOPIC + ". click your nickname to change it."); }
+    if (!welcomed) {
+      welcomed = true;
+      note("connected to " + TOPIC + " - click your nickname to change it.");
+    }
     client.subscribe(TOPIC);
     refreshSend();
   });
@@ -339,12 +372,10 @@ $("form").addEventListener("submit", async e => {
   const nick = nickname || "anonymous";
   $("text").value = "";
   const payload = await signMessage(keys, nick, text.slice(0, MAX_TEXT));
-  // retain: the broker keeps this as the last message and shows it to newcomers.
   client.publish(TOPIC, payload, { qos: 1, retain: true });
   $("text").focus();
 });
 
-// Nickname dialog: Ok or Enter accepts; Cancel, Escape or the X leaves the name as it was.
 function closeDialog(accept) {
   if (accept) {
     nickname = $("dinput").value.trim().slice(0, MAX_NICK);
@@ -368,14 +399,15 @@ $("overlay").addEventListener("keydown", e => { if (e.key === "Escape") closeDia
 (async function init() {
   nickname = (store.get("mqttchat.nick") || "").trim().slice(0, MAX_NICK);
   refreshNick();
+  note("join our Discord server and hang out with us: " + DISCORD, "invite");
   try {
     await loadIdentity();
   } catch (e) {
-    note("this browser does not support Ed25519 in Web Crypto, so messages cannot be signed. try a current version of Chrome, Firefox, Edge or Safari.", true);
+    note("this browser does not support Ed25519 in Web Crypto, so messages cannot be signed. Try a current version of Chrome, Firefox, Edge or Safari.", "err");
     return;
   }
   if (typeof mqtt === "undefined") {
-    note("could not load the MQTT library from unpkg.com.", true);
+    note("could not load the MQTT library from unpkg.com.", "err");
     return;
   }
   connect();
