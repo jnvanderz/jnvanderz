@@ -127,7 +127,7 @@
 <div class="app">
   <div class="legend" id="legend">
     <span class="ltext" title="Images, videos and audio from imglink.cc are played right here in the chat.">Images, videos, audio or links from <a href="https://imglink.cc" target="_blank" rel="noopener noreferrer">https://imglink.cc</a> will be rendered right here in the chat. Upload yours and paste the link!</span>
-    <label title="Turn off to stop loading imglink.cc and Discord images, videos and audio in the chat (YouTube is not affected)"><input type="checkbox" id="mediatoggle"> show media</label>
+    <label title="Turn off to stop loading imglink.cc and Discord images, videos and audio in the chat (YouTube is not affected)"><input type="checkbox" id="mediatoggle" checked> show media</label>
   </div>
   <div class="main">
     <div id="log" aria-live="polite">
@@ -311,7 +311,7 @@ function youtubeMedia(href) {
   return { kind: "youtube", src, href };
 }
 
-let showMedia = false;
+let showMedia = true;
 
 function fillSlot(slot) {
   slot.textContent = "";
@@ -567,7 +567,7 @@ $("overlay").addEventListener("keydown", e => { if (e.key === "Escape") closeDia
 
 (async function init() {
   nickname = (store.get("mqttchat.nick") || "").trim().slice(0, MAX_NICK);
-  setShowMedia(store.get("mqttchat.showMedia") === "1");
+  setShowMedia(store.get("mqttchat.showMedia") !== "0");
   $("mediatoggle").addEventListener("change", e => setShowMedia(e.target.checked));
   refreshNick();
   note("join our Discord server and hang out with us: " + DISCORD, "invite");
