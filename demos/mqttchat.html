@@ -52,6 +52,35 @@
   .imgs iframe.tiktok { width: min(100%, 325px); height: 578px; border-radius: 8px; background: #000; }
   .imgs iframe.insta { width: min(100%, 400px); height: 560px; border-radius: 4px; background: #fff; }
   .imgs iframe.tenor { width: min(100%, 320px); aspect-ratio: 1; height: auto; }
+  .imgs iframe.reddit { width: min(100%, 640px); height: 520px; border-radius: 8px; }
+  .imgs iframe.bsky { width: min(100%, 550px); height: 360px; }
+  .imgs iframe.threads { width: min(100%, 540px); height: 600px; border-radius: 8px; background: #101010; }
+  .imgs iframe.apple { width: min(100%, 660px); height: 175px; border-radius: 10px; }
+  .imgs iframe.apple.tall { height: 450px; }
+  .imgs iframe.deezer { width: min(100%, 640px); height: 152px; border-radius: 10px; }
+  .imgs iframe.deezer.tall { height: 352px; }
+  .imgs iframe.bandcamp { width: min(100%, 640px); height: 120px; }
+  .imgs iframe.bandcamp.tall { width: min(100%, 400px); height: 472px; }
+  .imgs iframe.map { width: min(100%, 640px); height: 360px; border: 1px solid var(--line); }
+  .imgs iframe.steam { width: min(100%, 646px); height: 190px; }
+  .imgs a img { cursor: zoom-in; }
+  .body strong { font-weight: bold; }
+  .body em { font-style: italic; }
+  .body code { background: #1e1f1a; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; }
+  .spoiler { background: #4a4b45; color: transparent; border-radius: 3px; cursor: pointer; padding: 0 2px; }
+  .spoiler:not(.shown) * { color: transparent !important; background: transparent !important;
+                           border-color: transparent !important; pointer-events: none; }
+  .spoiler:not(.shown):hover { background: #5a5b55; }
+  .spoiler.shown { background: #3a3b35; color: inherit; cursor: auto; }
+  .spoiler:focus-visible { outline: 1px dotted var(--text); }
+  #lightbox { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+              align-items: center; justify-content: center; gap: 8px; padding: 16px;
+              background: rgba(0, 0, 0, 0.88); cursor: zoom-out; }
+  #lightbox[hidden] { display: none; }
+  #lbimg { max-width: 100%; max-height: calc(100% - 40px); object-fit: contain; background: #1e1f1a; }
+  .lbbar { display: flex; gap: 12px; align-items: center; cursor: auto;
+           font: 12px/1.2 Tahoma, "MS Sans Serif", Verdana, Arial, sans-serif; color: var(--chrome-text); }
+  .lbbar a { color: var(--link); }
   .imgs audio { display: block; width: min(100%, 640px); height: 32px; }
   .legend { display: flex; align-items: center; gap: 8px; padding: 3px 6px;
             border-bottom: 1px solid var(--line); color: var(--dim); }
@@ -161,6 +190,14 @@
   </div>
 </div>
 
+<div id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Image viewer">
+  <img id="lbimg" alt="enlarged image" referrerpolicy="no-referrer">
+  <div class="lbbar">
+    <a id="lbopen" target="_blank" rel="noopener noreferrer nofollow">open original</a>
+    <button type="button" id="lbclose">Close</button>
+  </div>
+</div>
+
 <div id="overlay" hidden>
   <form class="dialog" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dtitle">
     <div class="titlebar">
@@ -262,7 +299,7 @@ const colorOf = id => `hsl(${hue(id)} 90% 65%)`;
 const pad = n => String(n).padStart(2, "0");
 
 const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
-const TRAILING = /[.,;:!?)\]}>'"]+$/;
+const TRAILING = /[.,;:!?)\]}>'"*|_~]+$/;
 
 const IMGLINK_HOSTS = new Set(["imglink.cc", "www.imglink.cc"]);
 const MAX_MEDIA = 4;
@@ -562,8 +599,184 @@ window.addEventListener("message", e => {
   stickOnResize(f);
 });
 
-const EMBEDS = [youtubeMedia, twitterMedia, spotifyMedia, soundcloudMedia, twitchMedia, vimeoMedia,
-  streamableMedia, tiktokMedia, instagramMedia, giphyMedia, tenorMedia, imglinkMedia, discordMedia];
+function redditMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = u.hostname.toLowerCase();
+  let path = null, m;
+  if (/^(?:(?:www|old|new|np|m|sh)\.)?reddit\.com$/.test(host)) {
+    if ((m = u.pathname.match(/^\/r\/([A-Za-z0-9_]{2,25})\/comments\/([a-z0-9]{3,12})(?:\/([A-Za-z0-9_%-]{0,120}))?\/?$/))) {
+      path = "/r/" + m[1] + "/comments/" + m[2] + "/" + (m[3] ? m[3] + "/" : "");
+    }
+  } else if (host === "redd.it") {
+    if ((m = u.pathname.match(/^\/([a-z0-9]{3,12})\/?$/))) path = "/comments/" + m[1] + "/";
+  }
+  if (!path) return null;
+  const q = new URLSearchParams({ embed: "true", theme: "dark", showmedia: "true", showmore: "false" });
+  return frame("https://embed.reddit.com" + path + "?" + q, href, "reddit", { title: "Reddit post" });
+}
+
+function blueskyMedia(href) {
+  const u = parseUrl(href);
+  if (!u || u.hostname.toLowerCase() !== "bsky.app") return null;
+  const m = u.pathname.match(/^\/profile\/([A-Za-z0-9.:_-]{3,253})\/post\/([A-Za-z0-9]{5,20})\/?$/);
+  if (!m) return null;
+  return { kind: "bsky", src: m[1] + "/" + m[2], actor: m[1], rkey: m[2], href, always: true };
+}
+
+const bskyDids = new Map();
+let bskySeq = 0;
+
+async function resolveBskyDid(actor) {
+  if (actor.startsWith("did:")) return actor;
+  if (!bskyDids.has(actor)) {
+    bskyDids.set(actor, fetch("https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=" +
+      encodeURIComponent(actor)).then(r => r.ok ? r.json() : null).then(j => j && j.did || null).catch(() => null));
+  }
+  return bskyDids.get(actor);
+}
+
+function bskyFrame(item) {
+  const f = document.createElement("iframe");
+  f.className = "emb bsky";
+  f.title = "Bluesky post";
+  f.loading = "lazy";
+  f.scrolling = "no";
+  f.referrerPolicy = "strict-origin-when-cross-origin";
+  f.dataset.bskyId = "bsky-" + (++bskySeq);
+  resolveBskyDid(item.actor).then(did => {
+    if (!did || !/^did:[a-z]+:[A-Za-z0-9._:%-]+$/.test(did)) { f.remove(); return; }
+    const q = new URLSearchParams({ id: f.dataset.bskyId, colorMode: "dark", ref_url: location.href });
+    f.src = "https://embed.bsky.app/embed/" + did + "/app.bsky.feed.post/" + item.rkey + "?" + q;
+  });
+  return f;
+}
+
+function threadsMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = hostOf(u);
+  if (host !== "threads.net" && host !== "threads.com") return null;
+  const m = u.pathname.match(/^\/@([A-Za-z0-9_.]{1,30})\/post\/([A-Za-z0-9_-]{5,40})\/?(?:embed\/?)?$/);
+  if (!m) return null;
+  return frame("https://www.threads.com/@" + m[1] + "/post/" + m[2] + "/embed", href, "threads",
+               { title: "Threads post" });
+}
+
+const KICK_RESERVED = new Set(["categories", "browse", "following", "search", "dashboard", "video",
+  "clips", "terms-of-service", "privacy-policy", "community-guidelines", "dmca-policy", "about",
+  "settings", "subscriptions", "transactions", "messages", "login", "signup", "kick-plus"]);
+
+function kickMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "kick.com") return null;
+  const m = u.pathname.match(/^\/([A-Za-z0-9_-]{2,30})\/?$/);
+  if (!m || KICK_RESERVED.has(m[1].toLowerCase())) return null;
+  return frame("https://player.kick.com/" + m[1] + "?autoplay=false", href, "wide", { title: "Kick channel" });
+}
+
+function bandcampMedia(href) {
+  const u = parseUrl(href);
+  if (!u || !/^(?:[a-z0-9-]+\.)?bandcamp\.com$/.test(u.hostname.toLowerCase())) return null;
+  const m = u.pathname.match(/^\/EmbeddedPlayer\/((?:[a-z_]+=[A-Za-z0-9#]+\/?)+)$/);
+  if (!m || !/(?:^|\/)(?:album|track)=\d+/.test(m[1])) return null;
+  const tall = !/tracklist=false/.test(m[1]) && /album=/.test(m[1]);
+  return frame("https://bandcamp.com/EmbeddedPlayer/" + m[1], href, tall ? "bandcamp tall" : "bandcamp",
+               { title: "Bandcamp player" });
+}
+
+function appleMusicMedia(href) {
+  const u = parseUrl(href);
+  if (!u || u.hostname.toLowerCase() !== "music.apple.com") return null;
+  const m = u.pathname.match(/^\/([a-z]{2})\/(album|playlist|song|music-video|station)\/(?:([A-Za-z0-9%_.-]{1,200})\/)?((?:id|pl\.|ra\.)?[A-Za-z0-9.-]{3,60})\/?$/);
+  if (!m) return null;
+  const i = u.searchParams.get("i");
+  const path = "/" + m[1] + "/" + m[2] + "/" + (m[3] ? m[3] + "/" : "") + m[4];
+  const q = i && /^\d{1,20}$/.test(i) ? "?i=" + i : "";
+  const small = m[2] === "song" || !!q;
+  return frame("https://embed.music.apple.com" + path + q, href, small ? "apple" : "apple tall",
+               { title: "Apple Music player" });
+}
+
+function deezerMedia(href) {
+  const u = parseUrl(href);
+  if (!u || hostOf(u) !== "deezer.com") return null;
+  const m = u.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(track|album|playlist|artist|episode|show|podcast)\/(\d{1,20})\/?$/);
+  if (!m) return null;
+  const type = m[1] === "podcast" ? "show" : m[1];
+  const small = type === "track" || type === "episode";
+  return frame("https://widget.deezer.com/widget/dark/" + type + "/" + m[2], href,
+               small ? "deezer" : "deezer tall", { title: "Deezer player" });
+}
+
+function mapsMedia(href) {
+  const u = parseUrl(href);
+  if (!u) return null;
+  const host = u.hostname.toLowerCase();
+  const isMapsHost = /^maps\.google\.[a-z.]{2,6}$/.test(host);
+  if (!isMapsHost && !(/^(?:www\.)?google\.[a-z.]{2,6}$/.test(host) && u.pathname.startsWith("/maps"))) return null;
+  if (/\/maps\/(?:dir|embed)\b/.test(u.pathname)) return null;
+  let q = u.searchParams.get("q") || u.searchParams.get("query") || "", z = "", m;
+  const path = decodeURIComponent(u.pathname.replace(/\+/g, " "));
+  if (!q && (m = path.match(/\/maps\/(?:place|search)\/([^\/@]+)/))) q = m[1];
+  if ((m = path.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)(?:,(\d{1,2}(?:\.\d+)?)z)?/))) {
+    if (!q) q = m[1] + "," + m[2];
+    if (m[3]) z = String(Math.round(+m[3]));
+  }
+  q = q.trim().slice(0, 200);
+  if (!q) return null;
+  const p = new URLSearchParams({ q, output: "embed" });
+  if (z) p.set("z", z);
+  return frame("https://maps.google.com/maps?" + p, href, "map", { title: "Google Maps" });
+}
+
+function steamMedia(href) {
+  const u = parseUrl(href);
+  if (!u || u.hostname.toLowerCase() !== "store.steampowered.com") return null;
+  const m = u.pathname.match(/^\/(?:app|widget)\/(\d{1,10})(?:\/[^\/]*)?\/?$/);
+  if (!m) return null;
+  return frame("https://store.steampowered.com/widget/" + m[1] + "/", href, "steam", { title: "Steam game" });
+}
+
+function parseMessageData(e) {
+  let data = e.data;
+  if (typeof data === "string") { try { data = JSON.parse(data); } catch (err) { return null; } }
+  return data && typeof data === "object" ? data : null;
+}
+
+function frameFromSource(selector, source) {
+  return [...document.querySelectorAll("#log " + selector)].find(x => x.contentWindow === source);
+}
+
+function setFrameHeight(f, h) {
+  h = Number(h);
+  if (!f || !(h > 0 && h < 5000)) return;
+  f.style.height = Math.ceil(h) + "px";
+  stickOnResize(f);
+}
+
+window.addEventListener("message", e => {
+  const origin = e.origin;
+  if (origin === "https://embed.reddit.com") {
+    const d = parseMessageData(e);
+    if (d && d.type === "resize.embed") setFrameHeight(frameFromSource("iframe.reddit", e.source), d.data);
+  } else if (origin === "https://embed.bsky.app") {
+    const d = parseMessageData(e);
+    if (d && d.height) {
+      const f = document.querySelector('#log iframe.bsky[data-bsky-id="' + CSS.escape(String(d.id)) + '"]')
+        || frameFromSource("iframe.bsky", e.source);
+      setFrameHeight(f, d.height);
+    }
+  } else if (origin === "https://www.threads.com" || origin === "https://www.threads.net") {
+    const d = parseMessageData(e);
+    if (d && d.type === "MEASURE" && d.details) setFrameHeight(frameFromSource("iframe.threads", e.source), d.details.height);
+  }
+});
+
+const EMBEDS = [youtubeMedia, twitterMedia, redditMedia, blueskyMedia, threadsMedia, spotifyMedia,
+  appleMusicMedia, deezerMedia, bandcampMedia, soundcloudMedia, twitchMedia, kickMedia, vimeoMedia,
+  streamableMedia, tiktokMedia, instagramMedia, mapsMedia, steamMedia, giphyMedia, tenorMedia,
+  imglinkMedia, discordMedia];
 
 function mediaFor(href) {
   for (const fn of EMBEDS) {
@@ -583,6 +796,7 @@ function stickOnResize(el) {
 function mediaElement(item) {
   const { kind, src, href } = item;
   if (kind === "tweet") return tweetFrame(src);
+  if (kind === "bsky") return bskyFrame(item);
   if (kind === "frame") {
     const f = document.createElement("iframe");
     f.className = "emb " + item.cls;
@@ -613,6 +827,11 @@ function mediaElement(item) {
     im.referrerPolicy = "no-referrer";
     im.addEventListener("error", () => a.remove());
     im.addEventListener("load", () => stickOnResize(im));
+    a.addEventListener("click", e => {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      openLightbox(src, href);
+    });
     a.append(im);
     return a;
   }
@@ -627,38 +846,79 @@ function mediaElement(item) {
   return m;
 }
 
+const TOKEN_RE = /(`+)([^`]+?)\1|\|\|(.+?)\|\||\*\*(.+?)\*\*|\*(?![\s*])(.+?)(?<![\s*])\*|\b((?:https?:\/\/|www\.)[^\s<>"'`]+)/gi;
+
+function appendLink(parent, raw, media, collect) {
+  let url = raw, cut = "";
+  while (url && TRAILING.test(url.slice(-1))) {
+    const ch = url.slice(-1);
+    if (ch === ")" && url.split("(").length > url.split(")").length - 1) break;
+    cut = ch + cut;
+    url = url.slice(0, -1);
+  }
+  const trail = cut ? [cut] : null;
+  const href = /^https?:\/\//i.test(url) ? url : "https://" + url;
+  let safe = null;
+  try {
+    const u = new URL(href);
+    if (url && (u.protocol === "http:" || u.protocol === "https:")) safe = u.href;
+  } catch (e) {}
+  if (safe) {
+    const a = document.createElement("a");
+    a.href = safe;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer nofollow";
+    a.textContent = url;
+    parent.append(a);
+    const item = collect ? mediaFor(safe) : null;
+    if (item && media.length < MAX_MEDIA && !media.some(i => i.src === item.src)) media.push(item);
+  } else {
+    parent.append(url);
+  }
+  if (trail) parent.append(trail[0]);
+}
+
+function renderInline(parent, text, media, collect, depth) {
+  if (depth > 6) { parent.append(text); return; }
+  let last = 0;
+  for (const m of text.matchAll(TOKEN_RE)) {
+    if (m.index > last) parent.append(text.slice(last, m.index));
+    last = m.index + m[0].length;
+    if (m[2] !== undefined) {
+      const c = document.createElement("code"); c.textContent = m[2]; parent.append(c);
+    } else if (m[3] !== undefined) {
+      const sp = document.createElement("span"); sp.className = "spoiler";
+      sp.title = "Spoiler: click to reveal";
+      sp.tabIndex = 0;
+      sp.setAttribute("role", "button");
+      const reveal = e => {
+        if (sp.classList.contains("shown")) return;
+        e.preventDefault(); e.stopPropagation();
+        sp.classList.add("shown"); sp.removeAttribute("title"); sp.removeAttribute("role"); sp.tabIndex = -1;
+      };
+      sp.addEventListener("click", reveal, true);
+      sp.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") reveal(e); });
+      renderInline(sp, m[3], media, false, depth + 1);
+      parent.append(sp);
+    } else if (m[4] !== undefined) {
+      const b = document.createElement("strong");
+      renderInline(b, m[4], media, collect, depth + 1);
+      parent.append(b);
+    } else if (m[5] !== undefined) {
+      const it = document.createElement("em");
+      renderInline(it, m[5], media, collect, depth + 1);
+      parent.append(it);
+    } else if (m[6] !== undefined) {
+      appendLink(parent, m[6], media, collect);
+    }
+  }
+  if (last < text.length) parent.append(text.slice(last));
+}
+
 function linkify(el, text) {
   el.textContent = "";
   const media = [];
-  let last = 0;
-  for (const match of text.matchAll(URL_RE)) {
-    let url = match[0];
-    const trail = url.match(TRAILING);
-    if (trail) url = url.slice(0, -trail[0].length);
-    if (!url) continue;
-    const start = match.index;
-    if (start > last) el.append(text.slice(last, start));
-    const href = /^https?:\/\//i.test(url) ? url : "https://" + url;
-    let safe = null;
-    try {
-      const u = new URL(href);
-      if (u.protocol === "http:" || u.protocol === "https:") safe = u.href;
-    } catch (e) {}
-    if (safe) {
-      const a = document.createElement("a");
-      a.href = safe;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer nofollow";
-      a.textContent = url;
-      el.append(a);
-      const item = mediaFor(safe);
-      if (item && media.length < MAX_MEDIA && !media.some(i => i.src === item.src)) media.push(item);
-    } else {
-      el.append(url);
-    }
-    last = start + url.length;
-  }
-  if (last < text.length) el.append(text.slice(last));
+  renderInline(el, text, media, true, 0);
   if (media.length) {
     const box = document.createElement("div"); box.className = "imgs";
     for (const item of media) {
@@ -670,6 +930,22 @@ function linkify(el, text) {
     }
     el.append(box);
   }
+}
+
+function openLightbox(src, href) {
+  const lb = $("lightbox");
+  $("lbimg").src = src;
+  $("lbopen").href = href;
+  lb.hidden = false;
+  $("lbclose").focus();
+}
+
+function closeLightbox() {
+  const lb = $("lightbox");
+  if (lb.hidden) return;
+  lb.hidden = true;
+  $("lbimg").removeAttribute("src");
+  $("text").focus();
 }
 
 function row(t, idText, nickText, bodyText) {
@@ -805,6 +1081,9 @@ $("nickbtn").addEventListener("click", () => {
 $("dialog").addEventListener("submit", e => { e.preventDefault(); closeDialog(true); });
 $("dcancel").addEventListener("click", () => closeDialog(false));
 $("dclose").addEventListener("click", () => closeDialog(false));
+$("lightbox").addEventListener("click", e => { if (e.target.id !== "lbopen") closeLightbox(); });
+$("lbclose").addEventListener("click", closeLightbox);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeLightbox(); });
 $("overlay").addEventListener("keydown", e => { if (e.key === "Escape") closeDialog(false); });
 
 (async function init() {
